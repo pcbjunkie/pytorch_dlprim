@@ -1,4 +1,5 @@
 import torch
+from types import SimpleNamespace
 from .pt_ocl import *
 
 def _device_index(device):
@@ -7,8 +8,10 @@ def _device_index(device):
     if isinstance(device, str):
         device = torch.device(device)
     if isinstance(device, torch.device):
+        if device.type not in ('ocl', 'privateuseone'):
+            raise ValueError('Expected an OpenCL device, got ' + str(device))
         if device.index is None:
-            return 0
+            return impl_current_device()
         return device.index
     return -1
 
@@ -33,21 +36,18 @@ class _OCL:
         impl_enable_profiling(_device_index(device))
         
     class device:
-        current_device = 0
         def __init__(self, device):
-            pass
-            #self.idx = _device_index(device)
-            #self.prev_idx = -1
+            self.idx = _device_index(device)
+            if self.idx < 0:
+                self.idx = impl_current_device()
 
         def __enter__(self):
-            pass
-            #print("Enter:",self.idx)
-            #self.prev_idx = self.current_device
-            #self.current_device = self.idx
+            self.prev_idx = impl_current_device()
+            impl_set_device(self.idx)
+            return self
         
         def __exit__(self, type, value, traceback):
-            #print("Leave:",self.idx,"->",self.current_device)
-            #self.current_device=self.prev_device
+            impl_set_device(self.prev_idx)
             return False
 
     @staticmethod
@@ -69,11 +69,67 @@ class _OCL:
     def empty_cache():
         impl_empty_cache()
 
-    def is_available():
-        return True
+    @staticmethod
+    def memory_stats(device=None):
+        """Allocator counters only; excludes driver allocations and other processes.
 
-def synchronize(dev):
-    _OCL.synchronize(Dev)
+        Allocated counts requested live storage bytes (views are not counted twice).
+        Reserved counts rounded live and cached OpenCL buffers.
+        """
+        index = impl_current_device() if device is None else _device_index(device)
+        return impl_memory_stats(index, False)
+
+    @staticmethod
+    def memory_allocated(device=None):
+        return _OCL.memory_stats(device)['allocated_bytes.all.current']
+
+    @staticmethod
+    def memory_reserved(device=None):
+        return _OCL.memory_stats(device)['reserved_bytes.all.current']
+
+    @staticmethod
+    def max_memory_allocated(device=None):
+        return _OCL.memory_stats(device)['allocated_bytes.all.peak']
+
+    @staticmethod
+    def max_memory_reserved(device=None):
+        return _OCL.memory_stats(device)['reserved_bytes.all.peak']
+
+    @staticmethod
+    def reset_peak_memory_stats(device=None):
+        index = impl_current_device() if device is None else _device_index(device)
+        impl_memory_stats(index, True)
+
+    @staticmethod
+    def device_count():
+        return impl_device_count()
+
+    @staticmethod
+    def current_device():
+        return impl_current_device()
+
+    @staticmethod
+    def set_device(device):
+        impl_set_device(_device_index(device))
+
+    @staticmethod
+    def get_device_properties(device=None):
+        index = impl_current_device() if device is None else _device_index(device)
+        return SimpleNamespace(**impl_device_properties(index))
+
+    @staticmethod
+    def get_device_name(device=None):
+        return _OCL.get_device_properties(device).name
+
+    @staticmethod
+    def is_available():
+        try:
+            return impl_device_count() > 0
+        except RuntimeError:
+            return False
+
+def synchronize(dev=None):
+    _OCL.synchronize(dev)
 
 def manual_seed_all(seed):
     _OCL.manual_seed_all(seed)

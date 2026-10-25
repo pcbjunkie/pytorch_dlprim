@@ -1,0 +1,11 @@
+# Local development artifacts
+/build*/
+/.venv/
+/venv/
+__pycache__/
+*.py[cod]
+*.so
+*.o
+*.log
+.env
+.env.*

@@ -26,7 +26,7 @@ namespace ptdlprim {
 
         std::unique_lock<std::mutex> g(lock);
 
-        std::int64_t size = round(orig_size);
+        std::int64_t size = round(std::max(int64_t(1),orig_size));
         std::unique_ptr<CLMemAllocation> res;
         
         auto p=allocation.find(size);
@@ -54,17 +54,19 @@ namespace ptdlprim {
         }
         requested_size += res->orig_size;
         peak_requested_size = std::max(requested_size,peak_requested_size);
+        peak_reserved_size = std::max(allocated_size,peak_reserved_size);
         if(debug_allocator)
             printf("malloc: allocated: %'16ld  requested %'16ld peak-req %'16ld cached %'16ld\n",allocated_size,requested_size,peak_requested_size,cached_size);
         return res;
     }
-    void CLCache::release(std::unique_ptr<CLMemAllocation> &&mem)
+    void CLCache::release(std::unique_ptr<CLMemAllocation> &&mem,bool retain)
     {
         std::unique_lock<std::mutex> g(lock);
 
         int64_t size = mem->size;
-        cached_size += mem->size;
         requested_size -= mem->orig_size;
+        if(!retain) {allocated_size -= mem->size;return;}
+        cached_size += mem->size;
         if(debug_allocator)
             printf("free  : allocated: %'16ld  requested %'16ld peak-req %'16ld cached %'16ld\n",allocated_size,requested_size,peak_requested_size,cached_size);
         allocation[size].push_back(std::move(mem));
@@ -76,7 +78,19 @@ namespace ptdlprim {
         {
             allocation_type tmp;
             tmp.swap(allocation);
+            allocated_size -= cached_size;
+            cached_size = 0;
         }
+    }
+    std::map<std::string,int64_t> CLCache::memory_stats(bool reset)
+    {
+        std::unique_lock<std::mutex> g(lock);
+        if(reset) {peak_requested_size=requested_size;peak_reserved_size=allocated_size;}
+        return {{"allocated_bytes.all.current",requested_size},
+                {"allocated_bytes.all.peak",peak_requested_size},
+                {"reserved_bytes.all.current",allocated_size},
+                {"reserved_bytes.all.peak",peak_reserved_size},
+                {"cached_bytes.all.current",cached_size}};
     }
     void CLCache::prepare(dlprim::Context &ctx)
     {

@@ -72,6 +72,8 @@ namespace ptdlprim {
         std::int64_t peak_requested_size = 0;
         std::int64_t requested_size = 0;
         std::int64_t cached_size = 0;
+        std::int64_t peak_reserved_size = 0;
+        std::map<std::string,int64_t> memory_stats(bool reset = false);
 
         bool reuse_oversized_chunks = getenv("OPENCL_CACHE_OVERSIZED") && atoi(getenv("OPENCL_CACHE_OVERSIZED"));
         bool debug_allocator = (getenv("OPENCL_DEBUG_CACHE") && atoi(getenv("OPENCL_DEBUG_CACHE")));
@@ -79,7 +81,7 @@ namespace ptdlprim {
         void clear();
         static std::uint64_t round(uint64_t v);
         std::unique_ptr<CLMemAllocation> allocate(int id,cl::Context &ctx,int64_t orig_size);
-        void release(std::unique_ptr<CLMemAllocation> &&mem);
+        void release(std::unique_ptr<CLMemAllocation> &&mem,bool retain = true);
         void prepare(dlprim::Context &ctx);
     };
     
@@ -120,12 +122,8 @@ namespace ptdlprim {
         static void release(std::unique_ptr<CLMemAllocation> &&mem)
         {
             auto &inst = instance();
-            if(inst.no_cache_) {
-                mem.reset();
-                return;
-            }
             auto &d = instance().data(mem->device_id);
-            d.cache.release(std::move(mem));
+            d.cache.release(std::move(mem),!inst.no_cache_);
         }
         static at::DataPtr allocate(c10::Device const &dev,size_t n)
         {
@@ -187,6 +185,11 @@ namespace ptdlprim {
             data[index]->cache.clear();
         }
         
+        static std::map<std::string,int64_t> memory_stats(int index,bool reset = false)
+        {
+            TORCH_CHECK(index>=0 && index<int(count()),"Invalid OpenCL device index: ",index);
+            return instance().data(index).cache.memory_stats(reset);
+        }
         static bool bad_fork()
         {
             instance();
