@@ -1,0 +1,193 @@
+{
+  "hardware": "HD6970 Cayman XT 2 GiB; Phenom II X4 955; 16 GiB RAM",
+  "software": {
+    "os": "Debian 12",
+    "kernel": "6.1.0-42-amd64",
+    "mesa": "25.0.7 patched Clover/r600",
+    "llvm": "15.0.6",
+    "torch": "2.4.1 local CPU wheel",
+    "ultralytics": "8.3.0"
+  },
+  "benchmark": {
+    "batch": 24,
+    "image_size": 256,
+    "precision": "FP32",
+    "workers": 1,
+    "cpu_threads": 2,
+    "warmup_updates": 4,
+    "measured_updates": 24,
+    "checkpoint_sha256": "c86660594175638194bd0083e5045f1c12dfc8376454d0bcd9241c5339ba8f89",
+    "reserve_mib": 960,
+    "retirement_mib": 32,
+    "filter_sweep": {
+      "control": {
+        "batch": 24,
+        "measured_steps": 24,
+        "images_per_second": 11.806850426268353,
+        "peak_reserved_bytes": 882624040,
+        "target_groups": 128,
+        "queue": 16
+      },
+      "filter256": {
+        "batch": 24,
+        "measured_steps": 24,
+        "images_per_second": 12.397829005796373,
+        "peak_reserved_bytes": 882624040,
+        "target_groups": 256,
+        "queue": 16
+      },
+      "filter512": {
+        "batch": 24,
+        "measured_steps": 24,
+        "images_per_second": 12.202594225242533,
+        "peak_reserved_bytes": 882624040,
+        "target_groups": 512,
+        "queue": 16
+      },
+      "control-repeat": {
+        "batch": 24,
+        "measured_steps": 24,
+        "images_per_second": 11.866206725640081,
+        "peak_reserved_bytes": 882624040,
+        "target_groups": 128,
+        "queue": 16
+      }
+    },
+    "queue_sweep": {
+      "32": {
+        "batch": 24,
+        "measured_steps": 24,
+        "images_per_second": 12.75619345177081,
+        "peak_reserved_bytes": 882624040
+      },
+      "16": {
+        "batch": 24,
+        "measured_steps": 24,
+        "images_per_second": 12.235976296058146,
+        "peak_reserved_bytes": 882624040
+      }
+    },
+    "control_mean_images_per_second": 11.836528575954217,
+    "filter256_gain_percent": 4.742103448999657,
+    "combined_gain_percent": 7.7697178688427515
+  },
+  "profile": {
+    "phase_mean_seconds": {
+      "natural": {
+        "data_loading": 0.003398519999609562,
+        "preprocess_and_input_transfer": 0.005605501999525586,
+        "network_forward": 0.3902694960983354,
+        "detection_loss": 0.4363582323996525,
+        "forward_and_detection_loss": 0.8266277284979878,
+        "backward": 1.0321874582012243,
+        "gradient_unscale": 0.0001930051985254977,
+        "gradient_clipping": 0.027883084701170447,
+        "sgd_update": 0.04734168709983351,
+        "scaler_update": 0.00016978369967546314,
+        "zero_grad": 0.0013565795008616988,
+        "ema_update": 0.0208265303997905,
+        "loss_logging_host_read": 0.011293410001235316,
+        "total": 1.9795836770994355
+      },
+      "synchronized": {
+        "data_loading": 0.003570582599786576,
+        "preprocess_and_input_transfer": 0.00716947319888277,
+        "network_forward": 0.3853488105989527,
+        "detection_loss": 0.4043176728009712,
+        "forward_and_detection_loss": 0.7896664833999238,
+        "backward": 1.0316065398015781,
+        "gradient_unscale": 0.0005182415989111178,
+        "gradient_clipping": 0.03483886679896386,
+        "sgd_update": 0.06938760519842617,
+        "scaler_update": 0.00047337840078398585,
+        "zero_grad": 0.01020656299951952,
+        "ema_update": 0.04807733759953407,
+        "loss_logging_host_read": 0.0005003332014894113,
+        "total": 1.9962677871997585
+      },
+      "instrumented": {
+        "data_loading": 0.004382023330739078,
+        "preprocess_and_input_transfer": 0.005484583334085376,
+        "network_forward": 0.41355622733438696,
+        "detection_loss": 0.5171368999993623,
+        "forward_and_detection_loss": 0.9306931273337492,
+        "backward": 1.121770072997606,
+        "gradient_unscale": 0.00035403433139435947,
+        "gradient_clipping": 0.03147700199770043,
+        "sgd_update": 0.05617029933394709,
+        "scaler_update": 0.00011781033390434459,
+        "zero_grad": 0.0006636530015384778,
+        "ema_update": 0.048335672334360424,
+        "loss_logging_host_read": 0.011142002998288566,
+        "total": 2.213258271335993
+      }
+    },
+    "gpu_ms_per_batch": {
+      "conv_filter_partials": 319.2183380000001,
+      "conv_gemm": 239.63637499999984,
+      "conv_input_gather4_3x3": 194.08130666666665,
+      "conv_input_gather": 89.50708033333335,
+      "batched_pointwise": 47.54821233333336,
+      "pointwise_exec": 39.792110336666816,
+      "topk_select": 39.33293333333333,
+      "read": 36.39126267199998,
+      "pooling_bw": 26.445223333333338,
+      "calc_dyx_x": 26.155954666666666,
+      "pointwise_exec_broadcast": 21.918368183333293,
+      "calc_mean_var": 19.525076,
+      "calc_dyx_sums": 18.108142666666666,
+      "backward_data": 17.698295666666663,
+      "forward": 14.250406999999996,
+      "slice_copy": 14.056110983333332,
+      "softmax": 13.255038666666668,
+      "nonzero_block_offsets": 12.583698666666669,
+      "copy_strided": 11.32066627666664,
+      "batched_norm": 8.144298999999998,
+      "conv_gemm_bwd_filter": 7.226076666666667,
+      "index_sort_pass32": 6.578930703333388,
+      "index_put_addresses32": 3.5502603333333336,
+      "gemm": 2.598403333333333,
+      "index_gather": 2.3055936766666667,
+      "target_scatter": 1.8775540000000006,
+      "sep_conv": 1.6308523333333333,
+      "nearest_bwd": 1.2525926666666667,
+      "nonzero_flags": 1.237668629999999,
+      "sep_conv_bw_filter": 1.2311466666666666,
+      "nearest_fwd": 1.2073326666666666,
+      "conv_filter_reduce": 1.093187326666667,
+      "copy_buffer": 1.0660746733333337,
+      "nonzero_coordinates": 1.0537787033333326,
+      "bwd_bias_a": 0.8734816666666666,
+      "pooling": 0.8504446666666666,
+      "pack_byte_output": 0.6963359700000007,
+      "copy_packed_byte_output": 0.5529267233333329,
+      "compute_backward_factors": 0.346741666666667,
+      "backward_filter": 0.33762968000000015,
+      "pointwise_exec_broadcast_1st_stage": 0.325445,
+      "calc_mean_var_reduce": 0.2961493333333335,
+      "calc_dyx_x_reduce": 0.29477733333333367,
+      "mean_gamma_to_ab": 0.2602982933333334,
+      "update_sums": 0.24451992333333364,
+      "copy_strided_bytes": 0.06733336000000004,
+      "activation": 0.06040733333333333,
+      "bwd_bias": 0.058852,
+      "sscal": 0.05174033333333333,
+      "bwd_bias_b": 0.033889333333333334,
+      "index_segment_sum32": 0.025814666666666666,
+      "unique_rank": 0.022852333333333332,
+      "nll_loss_fwd": 0.022369999999999998,
+      "unique_compact": 0.019740333333333332,
+      "nll_loss_bwd": 0.01774100333333333,
+      "index_sort_init32": 0.01674,
+      "index_put_scatter32": 0.010926333333333333,
+      "write": 0.00029633233333333333
+    }
+  },
+  "notes": [
+    "Clean benchmark has no operator profiler, validation, checkpoint writes or CPU comparisons in measured windows.",
+    "Two target128 control repetitions bracket filter candidates. Queue32 vs queue16 is a separate sequential bounded comparison, not a statistical confidence interval.",
+    "GPU event times and host wall times are separate measurements and must not be added.",
+    "30-epoch completed baseline uses filter target128/queue16, not final256/32.",
+    "The raw exploratory OpenCL microbenchmark exhibited intermittent mismatches in control and variants; no tile-depth change was accepted. Full integrated CPU tests are separate evidence."
+  ]
+}

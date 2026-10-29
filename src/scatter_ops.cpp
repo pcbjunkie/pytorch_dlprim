@@ -4,6 +4,7 @@
 #include <map>
 #include <mutex>
 #include <sstream>
+#include <cstdlib>
 
 namespace ptdlprim {
 using namespace at;
@@ -30,6 +31,21 @@ Tensor & scatter_target_out(const Tensor &self,int64_t dim,const Tensor &index,
     if(self.dim()==0 || index.size(dim)>32 || (self.scalar_type()!=kFloat && self.scalar_type()!=kChar && self.scalar_type()!=kLong)) {
         auto cpu=add ? self.cpu().scatter_add(dim,index.cpu(),src->cpu()) : self.cpu().scatter(dim,index.cpu(),value);
         out.resize_as_(self);out.copy_(cpu);return out;
+    }
+    // r600 subword shader stores can corrupt an entire word. Compute small
+    // int8 scatters in FP32 (all intermediate integers are exact here), then
+    // use the packed byte conversion path to preserve native tensor storage.
+    const char *packed=std::getenv("DLPRIM_PACKED_BYTE_OUTPUTS");
+    if(self.scalar_type()==kChar && packed && std::string(packed)=="1") {
+        if(add) TORCH_CHECK(!src->is_alias_of(out),"scatter source must not alias output");
+        auto wide=self.to(kFloat);
+        auto result=at::empty_like(wide);
+        c10::optional<Tensor> wide_src=c10::nullopt;
+        if(add) wide_src=src->to(kFloat);
+        scatter_target_out(wide,dim,index,wide_src,value,result);
+        out.resize_as_(self);
+        out.copy_(result.to(kChar));
+        return out;
     }
     auto x=self.contiguous(), idx=index.contiguous();
     Tensor source=add ? src->contiguous() : x;

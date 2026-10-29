@@ -1,0 +1,1275 @@
+diff --git a/src/core/bn.cpp b/src/core/bn.cpp
+index 4725cc4..55fc0ff 100644
+--- a/src/core/bn.cpp
++++ b/src/core/bn.cpp
+@@ -9,6 +9,8 @@
+ #include <dlprim/gpu/program_cache.hpp>
+ 
+ #include <iostream>
++#include <cstdlib>
++#include <cstring>
+ 
+ namespace dlprim {
+ namespace core {
+@@ -42,9 +44,24 @@ namespace core {
+                     second_reduce_ = 128;
+                 else
+                     second_reduce_ = 64;
+-                ws_ += second_reduce_ * 2 * size_of_data_type(dtype) * features_;
+             }
+-            
++            // Opt-in r600 compatibility: the [2,128,16,16] statistics
++            // reduction hangs with WG_SIZE=256 in a standalone OpenCL fixture;
++            // WG_SIZE=64 and128 match CPU. Configure builds, dispatch and
++            // workspace together, including both reduction stages.
++            int max_wg=256;
++            char const *cap=std::getenv("DLPRIM_BN_MAX_WG");
++            if(cap) {
++                DLPRIM_CHECK(std::strcmp(cap,"64")==0 || std::strcmp(cap,"128")==0 || std::strcmp(cap,"256")==0);
++                max_wg=std::atoi(cap);
++            }
++            if(wg_>max_wg)
++                wg_=max_wg;
++            if(second_reduce_>max_wg)
++                second_reduce_=max_wg;
++            if(second_reduce_>1)
++                ws_ += second_reduce_ * 2 * size_of_data_type(dtype) * features_;
++
+             cl::Program const &fwd_sums = gpu::Cache::instance().get_program(ctx,
+                         "bn_sums",
+                         "WG_SIZE",wg_,
+diff --git a/src/core/conv.cpp b/src/core/conv.cpp
+index faba4c4..690b225 100644
+--- a/src/core/conv.cpp
++++ b/src/core/conv.cpp
+@@ -11,6 +11,9 @@
+ #include <dlprim/gpu/gemm.hpp>
+ #include <dlprim/gpu/program_cache.hpp>
+ #include <iostream>
++#include <cstdlib>
++#include <cstring>
++#include <limits>
+ 
+ namespace dlprim {
+ namespace core {
+@@ -110,6 +113,57 @@ namespace core {
+         int im2col_width_;
+     };
+     
++    class Conv2DBackwardDataGather : public Conv2DBackwardData {
++    public:
++        Conv2DBackwardDataGather(Context &ctx,Conv2DSettings const &c)
++        {
++            DLPRIM_CHECK(c.dtype==float_data);
++            char const *vector_flag=std::getenv("DLPRIM_GATHER_VECTOR4");
++            char const *small_flag=std::getenv("DLPRIM_GATHER_SMALL1X1");
++            size_t min_vector_width=small_flag && std::strcmp(small_flag,"0")!=0 ? 16 : 32;
++            vector4_=vector_flag && std::strcmp(vector_flag,"0")!=0 &&
++                c.kernel[0]==1 && c.kernel[1]==1 && c.stride[0]==1 && c.stride[1]==1 &&
++                c.pad[0]==0 && c.pad[1]==0 && c.shape[3]>=min_vector_width && c.shape[3]%4==0;
++            char const *spatial_flag=std::getenv("DLPRIM_GATHER_SPATIAL4");
++            spatial4_=spatial_flag && std::strcmp(spatial_flag,"0")!=0 &&
++                c.kernel[0]==3 && c.kernel[1]==3 && c.groups==1 &&
++                c.dilate[0]==1 && c.dilate[1]==1 && c.pad[0]==1 && c.pad[1]==1 &&
++                c.stride[0]==c.stride[1] && (c.stride[0]==1 || c.stride[0]==2) &&
++                c.shape[2]>=8 && c.shape[3]>=16 && c.shape[3]%(4*c.stride[1])==0 &&
++                (c.channels_in & (c.channels_in-1))==0 && (c.channels_out & (c.channels_out-1))==0;
++            auto &program=gpu::Cache::instance().get_program(ctx,"conv_input_gather",
++                "CI",c.channels_in,"CO",c.channels_out,"GROUPS",c.groups,
++                "KH",c.kernel[0],"KW",c.kernel[1],"SH",c.stride[0],"SW",c.stride[1],
++                "PH",c.pad[0],"PW",c.pad[1],"DH",c.dilate[0],"DW",c.dilate[1],
++                "GATHER_VECTOR4",int(vector4_),"GATHER_SPATIAL4",int(spatial4_));
++            kernel_=cl::Kernel(program,"conv_input_gather");
++        }
++        virtual char const *algo() const {return "gather";}
++        virtual void enqueue(Tensor &dx,Tensor &w,Tensor &dy,Tensor &,float factor,ExecutionContext const &e)
++        {
++            int p=0;
++            kernel_.setArg(p++,cl_uint(dx.shape()[0]));kernel_.setArg(p++,cl_uint(dx.shape()[2]));kernel_.setArg(p++,cl_uint(dx.shape()[3]));
++            kernel_.setArg(p++,cl_uint(dy.shape()[2]));kernel_.setArg(p++,cl_uint(dy.shape()[3]));
++            for(auto *t:{&dx,&w,&dy}) {
++                DLPRIM_CHECK(t->device_offset()+t->shape().total_size()<=std::numeric_limits<cl_uint>::max());
++                kernel_.setArg(p++,t->device_buffer());kernel_.setArg(p++,cl_uint(t->device_offset()));
++            }
++            kernel_.setArg(p++,factor);
++            // r600/Clover can hang with the implementation-selected local size
++            // for this kernel. A padded 8x8 tile matches the verified standalone
++            // launch; out-of-range work items are guarded in the kernel.
++            size_t width=dx.shape()[3],height=dx.shape()[2];
++            if(vector4_ || spatial4_)width/=4;
++            e.queue().enqueueNDRangeKernel(kernel_,cl::NullRange,
++                cl::NDRange((width+7)/8*8,(height+7)/8*8,dx.shape()[0]*dx.shape()[1]),
++                cl::NDRange(8,8,1),e.events(),e.event(spatial4_ ? "conv_input_gather4_3x3" : "conv_input_gather"));
++        }
++    private:
++        bool vector4_=false;
++        bool spatial4_=false;
++        cl::Kernel kernel_;
++    };
++
+     class Conv2DBackwardDataGEMM : public Conv2DBackwardData {
+     public:
+         Conv2DBackwardDataGEMM(Context &ctx,Conv2DSettings const &config) :
+@@ -164,6 +218,84 @@ namespace core {
+         Conv2DSettings config_;
+     };
+ 
++    // Opt-in atomic-free split-K for small filter matrices with long reductions.
++    class Conv2DBackwardFilterSplit : public Conv2DBackwardFilter {
++    public:
++        static int partitions(Conv2DSettings const &c)
++        {
++            size_t m=c.channels_out/c.groups;
++            size_t n=(c.channels_in/c.groups)*c.kernel[0]*c.kernel[1];
++            Shape out=get_output_shape(c,c.shape);
++            // Keep the initial opt-in path within tested legacy address mapping.
++            // Non-power-of-two spatial division has a separate control failure.
++            if((out[2] & (out[2]-1)) || (out[3] & (out[3]-1)))return 1;
++            size_t k=out[0]*out[2]*out[3];
++            size_t tiles=((m+31)/32)*((n+31)/32)*c.groups;
++            size_t target_groups=128;
++            // Bounded experimental tuning; keep the established algorithm default.
++            char const *target=std::getenv("DLPRIM_FILTER_SPLIT_GROUPS");
++            if(target) {
++                char *end=nullptr;
++                long value=std::strtol(target,&end,10);
++                if(end!=target && *end=='\0' && value>=64 && value<=1024 &&
++                   (value & (value-1))==0)
++                    target_groups=size_t(value);
++            }
++            int parts=1;
++            while(parts<64 && tiles*parts<target_groups && k/size_t(parts*2)>=512)parts*=2;
++            // Keep partial storage bounded, including grouped convolutions.
++            while(parts>1 && m*n*c.groups*parts*sizeof(float)>4*1024*1024)parts/=2;
++            return parts;
++        }
++        Conv2DBackwardFilterSplit(Context &ctx,Conv2DSettings const &c) : config_(c),parts_(partitions(c))
++        {
++            Shape out=get_output_shape(c,c.shape);
++            count_=size_t(c.channels_out)*(c.channels_in/c.groups)*c.kernel[0]*c.kernel[1];
++            auto &program=gpu::Cache::instance().get_program(ctx,"sgemm",
++                "TILE_SIZE_M",32,"TILE_SIZE_N",32,"BLOCK_SIZE_M",4,"BLOCK_SIZE_N",4,
++                "TILE_SIZE_K",32,"HOST_HAS_INTEL_SUBGROUPS",0,"TILE_OFFSET",0,
++                "BIAS",0,"ATRANS",0,"BTRANS",0,"IM2COL_OCHAN",out[2]*out[3],
++                "CONVGEMM",2,"KERN_H",c.kernel[0],"KERN_W",c.kernel[1],
++                "DILATE_H",c.dilate[0],"DILATE_W",c.dilate[1],"PAD_H",c.pad[0],"PAD_W",c.pad[1],
++                "STRIDE_H",c.stride[0],"STRIDE_W",c.stride[1],"GROUPS",c.groups,
++                "CHANNELS_IN",c.channels_in/c.groups,"SRC_COLS",c.shape[3],"SRC_ROWS",c.shape[2],
++                "IMG_COLS",out[3],"IMG_ROWS",out[2],"REDUCE_K",parts_,"FILTER_SPLIT_OUTPUT",1,"ACTIVATION",0);
++            partial_=cl::Kernel(program,"sgemm");
++            auto &reduction=gpu::Cache::instance().get_program(ctx,"filter_split_reduce","FILTER_PARTITIONS",parts_);
++            reduce_=cl::Kernel(reduction,"filter_split_reduce");
++        }
++        virtual char const *algo() const {return "split_filter";}
++        virtual size_t workspace() {return count_*parts_*sizeof(float);}
++        virtual void enqueue(Tensor &x,Tensor &dw,Tensor &dy,Tensor &ws,float factor,ExecutionContext const &e)
++        {
++            Tensor partial=ws.workspace_as_type(float_data);
++            DLPRIM_CHECK(partial.shape().total_size()>=count_*parts_);
++            int m=config_.channels_out/config_.groups;
++            int n=(config_.channels_in/config_.groups)*config_.kernel[0]*config_.kernel[1];
++            int k=dy.shape()[0]*dy.shape()[2]*dy.shape()[3];
++            int arg=0;partial_.setArg(arg++,m);partial_.setArg(arg++,n);partial_.setArg(arg++,k);
++            dy.set_arg(partial_,arg);partial_.setArg(arg++,k);
++            x.set_arg(partial_,arg);partial_.setArg(arg++,n);
++            partial.set_arg(partial_,arg);partial_.setArg(arg++,n);partial_.setArg(arg++,0.0f);
++            auto first=e.generate_series_context(0,2),second=e.generate_series_context(1,2);
++            e.queue().enqueueNDRangeKernel(partial_,cl::NullRange,
++                cl::NDRange(config_.groups*parts_,((m+31)/32)*8,((n+31)/32)*8),
++                cl::NDRange(1,8,8),first.events(),first.event("conv_filter_partials"));
++            DLPRIM_CHECK(partial.device_offset()+count_*parts_<=std::numeric_limits<cl_uint>::max());
++            DLPRIM_CHECK(dw.device_offset()+count_<=std::numeric_limits<cl_uint>::max());
++            reduce_.setArg(0,cl_uint(count_));reduce_.setArg(1,partial.device_buffer());
++            reduce_.setArg(2,cl_uint(partial.device_offset()));reduce_.setArg(3,dw.device_buffer());
++            reduce_.setArg(4,cl_uint(dw.device_offset()));reduce_.setArg(5,factor);
++            e.queue().enqueueNDRangeKernel(reduce_,cl::NullRange,
++                cl::NDRange((count_+31)/32*32),cl::NDRange(32),second.events(),second.event("conv_filter_reduce"));
++        }
++    private:
++        Conv2DSettings config_;
++        int parts_;
++        size_t count_;
++        cl::Kernel partial_,reduce_;
++    };
++
+     class Conv2DBackwardFilterGEMM: public Conv2DBackwardFilter  {
+     public:
+         Conv2DBackwardFilterGEMM(Context &ctx,Conv2DSettings const &config) : config_(config) 
+@@ -496,6 +628,7 @@ namespace core {
+             config_(config)
+         {
+             cl::Program const &prog = gpu::Cache::instance().get_program(ctx,"depthwise_separable_conv",
++                                    "BUILD_BACKWARD_DATA",0,
+                                     "ACTIVATION",int(activation),
+                                     "BIAS",int(bias),
+                                     "PATCH_ROWS",ds_patch_rows,
+@@ -685,6 +818,11 @@ namespace core {
+     }
+     static bool is_winograd_compatible(Context &ctx,Conv2DSettings const &config)
+     {
++        // Diagnostic/compatibility escape hatch for runtimes with incorrect
++        // Winograd execution. Standard GEMM remains the default alternative.
++        char const *disable = std::getenv("DLPRIM_DISABLE_WINOGRAD");
++        if(disable && std::strcmp(disable,"1") == 0)
++            return false;
+         //if(!(ctx.is_amd() || ctx.is_nvidia() || ctx.is_intel()))
+         if(!(ctx.is_amd() || ctx.is_nvidia()))
+             return false;
+@@ -730,6 +868,9 @@ namespace core {
+     }
+     std::unique_ptr<Conv2DBackwardData> Conv2DBackwardData::create(Context &ctx,Conv2DSettings const &config,std::string const &algo)
+     {
++        char const *gather=std::getenv("DLPRIM_CONV_GATHER");
++        if(algo=="gather" || (gather && std::strcmp(gather,"1")==0))
++            return std::unique_ptr<Conv2DBackwardData>(new Conv2DBackwardDataGather(ctx,config));
+         bool win = is_winograd_compatible(ctx,config);
+         bool dsc = is_depthwise_separable_compatible(config);
+ 
+@@ -752,6 +893,10 @@ namespace core {
+     }
+     std::unique_ptr<Conv2DBackwardFilter> Conv2DBackwardFilter::create(Context &ctx,Conv2DSettings const &config,std::string const &algo)
+     {
++        char const *split=std::getenv("DLPRIM_FILTER_SPLIT_K");
++        if(split && std::strcmp(split,"1")==0 && config.dtype==float_data &&
++           Conv2DBackwardFilterSplit::partitions(config)>1)
++            return std::unique_ptr<Conv2DBackwardFilter>(new Conv2DBackwardFilterSplit(ctx,config));
+         bool win = is_winograd_compatible(ctx,config); // no need to test min channels in/out since it is more optimal in any case
+         bool dsc = is_depthwise_separable_compatible(config);
+ 
+diff --git a/src/core/interpolate.cpp b/src/core/interpolate.cpp
+index 7773a15..c3a3683 100644
+--- a/src/core/interpolate.cpp
++++ b/src/core/interpolate.cpp
+@@ -43,7 +43,8 @@ namespace dlprim { namespace core {
+         }
+         
+         Context ctx(e);
+-        cl::Program const &prog = gpu::Cache::instance().get_program(ctx,"interpolate_2d");
++        cl::Program const &prog = gpu::Cache::instance().get_program(ctx,"interpolate_2d",
++            "BILINEAR_BACKWARD",int(bilinear && !fwd_bilinear));
+         cl::Kernel k(prog,(bilinear ? "bilinear" : "nearest_fwd"));
+ 
+         int bc = x_shape[0]*x_shape[1];
+@@ -106,7 +107,8 @@ namespace dlprim { namespace core {
+         }
+         
+         Context ctx(e);
+-        cl::Program const &prog = gpu::Cache::instance().get_program(ctx,"interpolate_2d");
++        cl::Program const &prog = gpu::Cache::instance().get_program(ctx,"interpolate_2d",
++            "BILINEAR_BACKWARD",0);
+         cl::Kernel k(prog,"nearest_bwd");
+ 
+         int bc = x_shape[0]*x_shape[1];
+diff --git a/src/core/pointwise.cpp b/src/core/pointwise.cpp
+index 8d125a0..f5bc05d 100644
+--- a/src/core/pointwise.cpp
++++ b/src/core/pointwise.cpp
+@@ -11,10 +11,46 @@
+ 
+ #include <iostream>
+ #include <sstream>
++#include <cstdlib>
++#include <cstring>
++#include <limits>
+ 
+ namespace dlprim {
+ namespace core {
+ 
++    static bool packed_byte_output(DataType dtype)
++    {
++        char const *flag=std::getenv("DLPRIM_PACKED_BYTE_OUTPUTS");
++        return flag && std::strcmp(flag,"1")==0 && (dtype==int8_data || dtype==uint8_data);
++    }
++
++    // Avoid r600 LLVM's broken global subword MSKOR writes. Math preserves its
++    // original scalar dtype, but stores into32-bit staging. Pack one owned word
++    // per work item and copy only the logical bytes with the OpenCL buffer API.
++    static void finish_packed_byte_output(Tensor &wide,Tensor &target,ExecutionContext const &e)
++    {
++        size_t count=target.shape().total_size();
++        if(count==0) return;
++        DLPRIM_CHECK(count<=std::numeric_limits<cl_uint>::max());
++        DLPRIM_CHECK(wide.device_offset()<=std::numeric_limits<cl_uint>::max());
++        Context ctx(e);
++        Tensor packed(ctx,Shape((count+3)/4),int32_data);
++        auto &program=gpu::Cache::instance().get_program(ctx,"pack_byte_output",
++                        "LITTLE_ENDIAN_BYTES",int(ctx.device().getInfo<CL_DEVICE_ENDIAN_LITTLE>()));
++        cl::Kernel kernel(program,"pack_byte_output");
++        kernel.setArg(0,wide.device_buffer());kernel.setArg(1,cl_uint(wide.device_offset()));
++        kernel.setArg(2,packed.device_buffer());kernel.setArg(3,cl_uint(packed.device_offset()));
++        kernel.setArg(4,cl_uint(count));
++        e.queue().enqueueNDRangeKernel(kernel,cl::NullRange,cl::NDRange((count+3)/4),cl::NullRange,
++                        e.events(),e.event("pack_byte_output"));
++        e.queue().enqueueCopyBuffer(packed.device_buffer(),target.device_buffer(),
++                        packed.device_offset()*sizeof(cl_uint),target.device_offset(),count,
++                        e.events(),e.event("copy_packed_byte_output"));
++        // The opt-in compatibility mode keeps both staging allocations alive
++        // until their last dependent command completes. No host value readback.
++        e.queue().finish();
++    }
++
+     void bind_as_dtype(cl::Kernel &k,int &p,double value,DataType dt)
+     {
+         switch(dt) {
+@@ -60,15 +96,20 @@ namespace core {
+             DLPRIM_CHECK(ref == ys[i].shape());
+             DLPRIM_CHECK(ref_type == ys[i].dtype());
+         }
++        std::vector<Tensor> actual_ys=ys;
++        if(packed_byte_output(ref_type)) {
++            for(size_t i=0;i<ys.size();i++)
++                actual_ys[i]=Tensor(ctx,ys[i].shape(),int32_data);
++        }
+         std::ostringstream params,loads,saves;
+         for(size_t i=0;i<xs.size();i++) {
+             params<<", __global dtype const *px" << i<< ", ulong px"<<i<<"_offset ";
+             loads<<"dtype x"<<i<<"=px"<<i<<"[index + px"<<i<<"_offset]; ";
+         }
+         for(size_t i=0;i<ys.size();i++) {
+-            params<<", __global dtype *py" << i<< ", ulong py"<<i<<"_offset ";
++            params<<", __global "<<(packed_byte_output(ref_type)?"int":"dtype")<<" *py" << i<< ", ulong py"<<i<<"_offset ";
+             loads<<"dtype y"<<i<<";";
+-            saves<<"py"<<i<<"[index]=y"<<i<<"; ";
++            saves<<"py"<<i<<"[index + py"<<i<<"_offset]=y"<<i<<"; ";
+         }
+ 
+         std::string param_dtype = data_type_to_opencl_param_type(ref_type);
+@@ -95,11 +136,15 @@ namespace core {
+         k.setArg(p++,total);
+         for(Tensor &x:xs)
+             x.set_arg(k,p);
+-        for(Tensor &y:ys)
++        for(Tensor &y:actual_ys)
+             y.set_arg(k,p);
+         for(double w:ws)
+             bind_as_dtype(k,p,w,ref_type);
+         e.queue().enqueueNDRangeKernel(k,cl::NullRange,cl::NDRange(total),cl::NullRange,e.events(),e.event("pointwise_exec"));
++        if(packed_byte_output(ref_type)) {
++            for(size_t i=0;i<ys.size();i++)
++                finish_packed_byte_output(actual_ys[i],ys[i],e);
++        }
+     }
+ 
+ 
+@@ -228,6 +273,11 @@ namespace core {
+             strides[i] = shapes[i].broadcast_strides(ref);
+         }
+         
++        std::vector<Tensor> actual_ys=ys;
++        for(size_t i=0;i<ys.size();i++) {
++            if(packed_byte_output(ys[i].dtype()))
++                actual_ys[i]=Tensor(ctx,ys[i].shape(),int32_data);
++        }
+         std::ostringstream params,loads,saves;
+         for(size_t i=0;i<xs.size();i++) {
+             std::string type = data_type_to_opencl_type(xs[i].dtype());
+@@ -237,7 +287,8 @@ namespace core {
+         }
+         for(size_t i=0;i<ys.size();i++) {
+             std::string type = data_type_to_opencl_type(ys[i].dtype());
+-            params<<", __global "<<type << " *py" << i<< ", ulong py"<<i<<"_offset";
++            std::string storage_type=packed_byte_output(ys[i].dtype())?"int":type;
++            params<<", __global "<<storage_type << " *py" << i<< ", ulong py"<<i<<"_offset";
+             loads<<type << " y"<<i<<";\\\n";
+             saves<<"py"<<i<<"[get_direct_offset(index,limit,py"<<i<<"_offset)]=y"<<i<<";\\\n";
+             loads<<"typedef " << type << " typeof_y" << i << ";\\\n";
+@@ -265,7 +316,7 @@ namespace core {
+             xs[i].set_arg(k,p);
+             bind_shape(k,p,strides[i]);
+         }
+-        for(Tensor &y:ys)
++        for(Tensor &y:actual_ys)
+             y.set_arg(k,p);
+         
+         for(size_t i=0;i<ws.size();i++) { 
+@@ -274,6 +325,10 @@ namespace core {
+         cl::NDRange range = get_broadcast_ndrange(ref);
+             
+         e.queue().enqueueNDRangeKernel(k,cl::NullRange,range,cl::NullRange,e.events(),e.event("pointwise_exec_broadcast"));
++        for(size_t i=0;i<ys.size();i++) {
++            if(packed_byte_output(ys[i].dtype()))
++                finish_packed_byte_output(actual_ys[i],ys[i],e);
++        }
+     }
+ 
+     ///
+diff --git a/src/core/pool.cpp b/src/core/pool.cpp
+index daaaaed..68c4293 100644
+--- a/src/core/pool.cpp
++++ b/src/core/pool.cpp
+@@ -9,6 +9,8 @@
+ #include <dlprim/core/common.hpp>
+ #include <dlprim/gpu/program_cache.hpp>
+ #include <iostream>
++#include <cstdlib>
++#include <string>
+ namespace dlprim {
+ namespace core {
+ 
+@@ -20,8 +22,10 @@ namespace core {
+             avg_(avg)
+         {
+             DLPRIM_CHECK(dt == float_data);
++            gather_ = !avg && std::getenv("DLPRIM_POOL_GATHER") && std::string(std::getenv("DLPRIM_POOL_GATHER")) == "1";
+             wg_size_ = 8;
+             cl::Program const &prog = gpu::Cache::instance().get_program(ctx,"pooling",
++                                        "POOL_GATHER",int(gather_),
+                                         "WG_SIZE",wg_size_,
+                                         "POOL_H",k[0],
+                                         "POOL_W",k[1],
+@@ -90,12 +94,13 @@ namespace core {
+             dx.set_arg(bwd_kernel_,p);
+ 
+             cl::NDRange wg(wg_size_,wg_size_,1);
+-            cl::NDRange gr = gpu::round_range(out_h,out_w,bc,wg);
++            cl::NDRange gr = gpu::round_range(gather_ ? in_h : out_h,gather_ ? in_w : out_w,bc,wg);
+ 
+             ex.queue().enqueueNDRangeKernel(bwd_kernel_,cl::NullRange,gr,wg,ec2.events(),ec2.event("pooling_bw"));
+         }
+     private:
+         Scale scal_;
++        bool gather_;
+         bool avg_;
+         int wg_size_;
+         cl::Kernel kernel_;
+diff --git a/src/core/util.cpp b/src/core/util.cpp
+index c4a698a..55ad3f7 100644
+--- a/src/core/util.cpp
++++ b/src/core/util.cpp
+@@ -9,6 +9,10 @@
+ #include <dlprim/gpu/program_cache.hpp>
+ 
+ #include <iostream>
++#include <cstdint>
++#include <limits>
++#include <cstdlib>
++#include <cstring>
+ 
+ namespace dlprim {
+ namespace core {
+@@ -23,11 +27,66 @@ namespace core {
+         DLPRIM_CHECK(shape.size() == dst_strides.size());
+         int dims = shape.size();
+         Context ctx(q);
++        char const *packed_bytes=std::getenv("DLPRIM_PACKED_BYTE_OUTPUTS");
++        if(packed_bytes && std::strcmp(packed_bytes,"1")==0 && dtype_src==dtype_dst &&
++           (dtype_dst==int8_data || dtype_dst==uint8_data)) {
++            // Byte copy via the OpenCL API avoids broken shader subword stores.
++            // Coalesce common contiguous suffixes; strides are host metadata,
++            // and tensor values remain in device buffers.
++            size_t total=shape.total_size();
++            if(total==0)return;
++            size_t span=1;
++            int outer=dims;
++            for(int i=dims-1;i>=0;i--) {
++                if(src_strides[i]!=span || dst_strides[i]!=span)break;
++                span*=shape[i];outer=i;
++            }
++            for(size_t row=0;row<total/span;row++) {
++                size_t index=row,from=src_offset,to=dst_offset;
++                for(int i=outer-1;i>=0;i--) {
++                    size_t coord=index%shape[i];index/=shape[i];
++                    from+=coord*src_strides[i];to+=coord*dst_strides[i];
++                }
++                if(src()==dst() && from==to)continue;
++                q.queue().enqueueCopyBuffer(src,dst,from,to,span,
++                                           q.events(),q.event("copy_strided_bytes"));
++            }
++            q.queue().finish();
++            return;
++        }
++
++        // Avoid broken/expensive 64-bit division on legacy 32-bit-address
++        // runtimes, but only if all logical coordinates and addresses fit.
++        uint64_t limit = std::numeric_limits<cl_uint>::max();
++        bool narrow_index = ctx.device().getInfo<CL_DEVICE_ADDRESS_BITS>() == 32;
++        uint64_t total = 1;
++        for(int i=0;i<dims;i++) {
++            if(shape[i] == 0 || shape[i] > limit / total) {narrow_index=false;break;}
++            total *= shape[i];
++        }
++        auto address_fits = [&](cl_ulong offset,Shape const &strides) {
++            if(offset > limit) return false;
++            for(int i=0;i<dims;i++) {
++                if(shape[i] > limit || strides[i] > limit) return false;
++                uint64_t extent = shape[i] ? shape[i]-1 : 0;
++                if(extent && strides[i] > (limit-offset)/extent) return false;
++                offset += extent * strides[i];
++            }
++            return true;
++        };
++        narrow_index = narrow_index && address_fits(src_offset,src_strides) && address_fits(dst_offset,dst_strides);
++        char const *flat_option=std::getenv("DLPRIM_FLAT_STRIDED_COPY");
++        bool flat3=narrow_index && total<=limit-31 && dims==3 && flat_option && std::strcmp(flat_option,"1")==0;
+         bool use_io_type = dtype_src == dtype_dst;
+         cl::Program const &prog = gpu::Cache::instance().get_program(ctx,"copy_strided",
+                                 "dtype_src",data_type_to_opencl_type(dtype_src,use_io_type),
+                                 "dtype_tgt",data_type_to_opencl_type(dtype_dst,use_io_type),
+-                                "DIMS",dims);
++                                "DIMS",dims,
++                                "INDEX32",int(narrow_index),
++                                "COPY_NO_DIVISION",int(narrow_index && dims >= 4),
++                                "COPY_FLAT3",int(flat3),
++                                "FLAT_D1",flat3 ? shape[1] : size_t(1),
++                                "FLAT_D2",flat3 ? shape[2] : size_t(1));
+         cl::NDRange range;
+         switch(dims) {
+         case 1: range = cl::NDRange(shape[0]); break;
+@@ -41,18 +100,31 @@ namespace core {
+         default:
+             throw NotImplementedError("Invalid dimentsions count for strided copy " + std::to_string(dims));
+         }
++        if(narrow_index && dims >= 4)
++            range = cl::NDRange(shape[dims-1],shape[dims-2],shape[dims-3]);
+         cl::Kernel k(prog,"copy");
+         int p=0;
++        auto set_index = [&](cl_ulong value) {
++            if(narrow_index) k.setArg(p++,cl_uint(value));
++            else k.setArg(p++,value);
++        };
+         for(int i=0;i<dims;i++) {
+-            k.setArg(p++,cl_ulong(shape[i]));
+-            k.setArg(p++,cl_ulong(src_strides[i]));
+-            k.setArg(p++,cl_ulong(dst_strides[i]));
++            set_index(shape[i]);
++            set_index(src_strides[i]);
++            set_index(dst_strides[i]);
+         }
+         k.setArg(p++,src);
+-        k.setArg(p++,src_offset);
++        set_index(src_offset);
+         k.setArg(p++,dst);
+-        k.setArg(p++,dst_offset);
+-        q.queue().enqueueNDRangeKernel(k,cl::NullRange,range,cl::NullRange,q.events(),q.event("copy_strided"));
++        set_index(dst_offset);
++        cl::NDRange local=cl::NullRange;
++        if(flat3) {
++            size_t width=std::min(size_t(32),ctx.device().getInfo<CL_DEVICE_MAX_WORK_GROUP_SIZE>());
++            width=std::min(width,ctx.device().getInfo<CL_DEVICE_MAX_WORK_ITEM_SIZES>()[0]);
++            range=cl::NDRange((total+width-1)/width*width);
++            local=cl::NDRange(width);
++        }
++        q.queue().enqueueNDRangeKernel(k,cl::NullRange,range,local,q.events(),q.event("copy_strided"));
+ 
+     }
+ }
+diff --git a/src/gemm.cpp b/src/gemm.cpp
+index 6b66329..c348544 100644
+--- a/src/gemm.cpp
++++ b/src/gemm.cpp
+@@ -9,6 +9,8 @@
+ #include <dlprim/gpu/program_cache.hpp>
+ #include <dlprim/ops/scal.hpp>
+ #include <iostream>
++#include <cstdlib>
++#include <cstring>
+ 
+ namespace dlprim {
+ namespace gpu {
+@@ -138,7 +140,18 @@ namespace gpu {
+                     }
+                 }
+             }
+-            if(!batch_gemm_) {
++            // Experimental r600 profile: reduce register/LDS pressure and use
++            // one 64-thread wave per workgroup. The filter-gradient M256/N1152/
++            // K128 case hangs at96x96 but matches CPU with this32x32 variant.
++            char const *small_tiles=std::getenv("DLPRIM_GEMM_SMALL_TILES");
++            if(small_tiles && std::strcmp(small_tiles,"1")==0 && !host_has_intel_subgroups_) {
++                tile_size_m_=tile_size_n_=32;
++                block_size_m_=block_size_n_=4;
++                tile_size_k_=32;
++                off_=0;
++            }
++            char const *disable_split_k = std::getenv("DLPRIM_DISABLE_SPLIT_K");
++            if(!batch_gemm_ && !(disable_split_k && std::strcmp(disable_split_k,"1") == 0)) {
+                 int cores = ctx.estimated_core_count();
+                 if(cores >= 256 && M * N / (block_size_m_ * block_size_n_) < 4 * cores && K > M*16 && K > N*16) {
+                     reduce_k_ = 8;
+diff --git a/src/kernels/copy_strided.cl b/src/kernels/copy_strided.cl
+index c370b6e..f351b11 100644
+--- a/src/kernels/copy_strided.cl
++++ b/src/kernels/copy_strided.cl
+@@ -6,52 +6,130 @@
+ ///
+ ///////////////////////////////////////////////////////////////////////////////
+ #include "defs.h"
++#ifndef INDEX32
++#define INDEX32 0
++#endif
++#if INDEX32
++typedef uint index_t;
++#else
++typedef ulong index_t;
++#endif
+ 
+ __kernel void copy(
+-                ulong d0,ulong s0,ulong t0,
++                index_t d0,index_t s0,index_t t0,
+ #if DIMS >= 2
+-                ulong d1,ulong s1,ulong t1,
++                index_t d1,index_t s1,index_t t1,
+ #endif
+ #if DIMS >= 3
+-                ulong d2,ulong s2,ulong t2,
++                index_t d2,index_t s2,index_t t2,
+ #endif          
+ #if DIMS >= 4
+-                ulong d3,ulong s3,ulong t3,
++                index_t d3,index_t s3,index_t t3,
+ #endif          
+ #if DIMS >= 5
+-                ulong d4,ulong s4,ulong t4,
++                index_t d4,index_t s4,index_t t4,
+ #endif
+ #if DIMS >= 6
+-                ulong d5,ulong s5,ulong t5,
++                index_t d5,index_t s5,index_t t5,
+ #endif
+ #if DIMS >= 7
+-                ulong d6,ulong s6,ulong t6,
++                index_t d6,index_t s6,index_t t6,
+ #endif
+ #if DIMS >= 8
+-                ulong d7,ulong s7,ulong t7,
++                index_t d7,index_t s7,index_t t7,
+ #endif
+-                __global dtype_src const *src,ulong src_offset,
+-                __global dtype_tgt *tgt,ulong tgt_offset)
++                __global dtype_src const *src,index_t src_offset,
++                __global dtype_tgt *tgt,index_t tgt_offset)
+ {
+         src+=src_offset;
+         tgt+=tgt_offset;
++        #if COPY_FLAT3 && DIMS == 3
++            index_t g=get_global_id(0);
++            if(g>=d0*d1*d2) return;
++            index_t i2=g % FLAT_D2;
++            index_t i1=(g / FLAT_D2) % FLAT_D1;
++            index_t i0=g / ((uint)FLAT_D2*(uint)FLAT_D1);
++            tgt[i0*t0+i1*t1+i2*t2]=src[i0*s0+i1*s1+i2*s2];
++        #elif COPY_NO_DIVISION && DIMS >= 4
++        #if DIMS == 4
++            index_t i3 = get_global_id(0);
++            index_t i2 = get_global_id(1);
++            index_t i1 = get_global_id(2);
++            if(i1 >= d1 || i2 >= d2 || i3 >= d3) return;
++            for(index_t i0=0;i0<d0;++i0) {
++                tgt[i0*t0 + i1*t1 + i2*t2 + i3*t3] = src[i0*s0 + i1*s1 + i2*s2 + i3*s3];
++            }
++        #elif DIMS == 5
++            index_t i4 = get_global_id(0);
++            index_t i3 = get_global_id(1);
++            index_t i2 = get_global_id(2);
++            if(i2 >= d2 || i3 >= d3 || i4 >= d4) return;
++            for(index_t i0=0;i0<d0;++i0) {
++                for(index_t i1=0;i1<d1;++i1) {
++                    tgt[i0*t0 + i1*t1 + i2*t2 + i3*t3 + i4*t4] = src[i0*s0 + i1*s1 + i2*s2 + i3*s3 + i4*s4];
++                }
++            }
++        #elif DIMS == 6
++            index_t i5 = get_global_id(0);
++            index_t i4 = get_global_id(1);
++            index_t i3 = get_global_id(2);
++            if(i3 >= d3 || i4 >= d4 || i5 >= d5) return;
++            for(index_t i0=0;i0<d0;++i0) {
++                for(index_t i1=0;i1<d1;++i1) {
++                    for(index_t i2=0;i2<d2;++i2) {
++                        tgt[i0*t0 + i1*t1 + i2*t2 + i3*t3 + i4*t4 + i5*t5] = src[i0*s0 + i1*s1 + i2*s2 + i3*s3 + i4*s4 + i5*s5];
++                    }
++                }
++            }
++        #elif DIMS == 7
++            index_t i6 = get_global_id(0);
++            index_t i5 = get_global_id(1);
++            index_t i4 = get_global_id(2);
++            if(i4 >= d4 || i5 >= d5 || i6 >= d6) return;
++            for(index_t i0=0;i0<d0;++i0) {
++                for(index_t i1=0;i1<d1;++i1) {
++                    for(index_t i2=0;i2<d2;++i2) {
++                        for(index_t i3=0;i3<d3;++i3) {
++                            tgt[i0*t0 + i1*t1 + i2*t2 + i3*t3 + i4*t4 + i5*t5 + i6*t6] = src[i0*s0 + i1*s1 + i2*s2 + i3*s3 + i4*s4 + i5*s5 + i6*s6];
++                        }
++                    }
++                }
++            }
++        #elif DIMS == 8
++            index_t i7 = get_global_id(0);
++            index_t i6 = get_global_id(1);
++            index_t i5 = get_global_id(2);
++            if(i5 >= d5 || i6 >= d6 || i7 >= d7) return;
++            for(index_t i0=0;i0<d0;++i0) {
++                for(index_t i1=0;i1<d1;++i1) {
++                    for(index_t i2=0;i2<d2;++i2) {
++                        for(index_t i3=0;i3<d3;++i3) {
++                            for(index_t i4=0;i4<d4;++i4) {
++                                tgt[i0*t0 + i1*t1 + i2*t2 + i3*t3 + i4*t4 + i5*t5 + i6*t6 + i7*t7] = src[i0*s0 + i1*s1 + i2*s2 + i3*s3 + i4*s4 + i5*s5 + i6*s6 + i7*s7];
++                            }
++                        }
++                    }
++                }
++            }
++        #endif
++        #else
+         #if DIMS == 1
+-            ulong i0 = get_global_id(0);
++            index_t i0 = get_global_id(0);
+             if(i0 >= d0)
+                 return;
+             tgt[i0*t0] = src[i0*s0];
+         #elif DIMS == 2
+-            ulong i1 = get_global_id(0);
+-            ulong i0 = get_global_id(1);
++            index_t i1 = get_global_id(0);
++            index_t i0 = get_global_id(1);
+             if(i0 >= d0)
+                 return;
+             if(i1 >= d1)
+                 return;
+             tgt[i0*t0 + i1*t1] = src[i0*s0 + i1*s1];
+         #elif DIMS == 3            
+-            ulong i2 = get_global_id(0);
+-            ulong i1 = get_global_id(1);
+-            ulong i0 = get_global_id(2);
++            index_t i2 = get_global_id(0);
++            index_t i1 = get_global_id(1);
++            index_t i0 = get_global_id(2);
+             if(i0 >= d0)
+                 return;
+             if(i1 >= d1)
+@@ -60,98 +138,99 @@ __kernel void copy(
+                 return;
+             tgt[i0*t0 + i1*t1 + i2*t2] = src[i0*s0 + i1*s1 + i2*s2];
+         #elif DIMS == 4
+-            ulong ic = get_global_id(0);
+-            ulong i1 = get_global_id(1);
+-            ulong i0 = get_global_id(2);
++            index_t ic = get_global_id(0);
++            index_t i1 = get_global_id(1);
++            index_t i0 = get_global_id(2);
+             if(i0 >= d0)
+                 return;
+             if(i1 >= d1)
+                 return;
+             if(ic >= d2*d3)
+                 return;
+-            ulong i2 = ic / d3;
+-            ulong i3 = ic % d3;
++            index_t i2 = ic / d3;
++            index_t i3 = ic % d3;
+             tgt[i0*t0 + i1*t1 + i2*t2 + i3*t3] = src[i0*s0 + i1*s1 + i2*s2 + i3*s3];
+         #elif DIMS == 5
+-            ulong i34 = get_global_id(0);
+-            ulong i12 = get_global_id(1);
+-            ulong i0 = get_global_id(2);
++            index_t i34 = get_global_id(0);
++            index_t i12 = get_global_id(1);
++            index_t i0 = get_global_id(2);
+             if(i0 >= d0)
+                 return;
+             if(i12 >= d1*d2)
+                 return;
+             if(i34 >= d3*d4)
+                 return;
+-            ulong i1  = i12 / d2;
+-            ulong i2  = i12 % d2;
+-            ulong i3  = i34 / d4;
+-            ulong i4  = i34 % d4;
++            index_t i1  = i12 / d2;
++            index_t i2  = i12 % d2;
++            index_t i3  = i34 / d4;
++            index_t i4  = i34 % d4;
+             tgt[i0*t0 + i1*t1 + i2*t2 + i3*t3 + i4*t4] = src[i0*s0 + i1*s1 + i2*s2 + i3*s3 + i4*s4];
+         #elif DIMS == 6
+-            ulong i45 = get_global_id(0);
+-            ulong i23 = get_global_id(1);
+-            ulong i01 = get_global_id(2);
++            index_t i45 = get_global_id(0);
++            index_t i23 = get_global_id(1);
++            index_t i01 = get_global_id(2);
+             if(i01 >= d0*d1)
+                 return;
+             if(i23 >= d2*d3)
+                 return;
+             if(i45 >= d4*d5)
+                 return;
+-            ulong i0  = i01 / d1;
+-            ulong i1  = i01 % d1;
+-            ulong i2  = i23 / d3;
+-            ulong i3  = i23 % d3;
+-            ulong i4  = i45 / d5;
+-            ulong i5  = i45 % d5;
++            index_t i0  = i01 / d1;
++            index_t i1  = i01 % d1;
++            index_t i2  = i23 / d3;
++            index_t i3  = i23 % d3;
++            index_t i4  = i45 / d5;
++            index_t i5  = i45 % d5;
+ 
+             tgt[i0*t0 + i1*t1 + i2*t2 + i3*t3 + i4*t4 + i5*t5] = src[i0*s0 + i1*s1 + i2*s2 + i3*s3 + i4*s4 + i5*s5];
+         #elif DIMS == 7
+-            ulong i456 = get_global_id(0);
+-            ulong i23  = get_global_id(1);
+-            ulong i01  = get_global_id(2);
++            index_t i456 = get_global_id(0);
++            index_t i23  = get_global_id(1);
++            index_t i01  = get_global_id(2);
+             if(i01 >= d0*d1)
+                 return;
+             if(i23 >= d2*d3)
+                 return;
+             if(i456 >= d4*d5*d6)
+                 return;
+-            ulong i0  = i01 / d1;
+-            ulong i1  = i01 % d1;
+-            ulong i2  = i23 / d3;
+-            ulong i3  = i23 % d3;
+-            ulong i4  = i456 / (d5*d6);
+-            ulong i56 = i456 % (d5*d6);
+-            ulong i5  = i56 / d6;
+-            ulong i6  = i56 % d6;
++            index_t i0  = i01 / d1;
++            index_t i1  = i01 % d1;
++            index_t i2  = i23 / d3;
++            index_t i3  = i23 % d3;
++            index_t i4  = i456 / (d5*d6);
++            index_t i56 = i456 % (d5*d6);
++            index_t i5  = i56 / d6;
++            index_t i6  = i56 % d6;
+ 
+             tgt[i0*t0 + i1*t1 + i2*t2 + i3*t3 + i4*t4 + i5*t5 + i6*t6] = src[i0*s0 + i1*s1 + i2*s2 + i3*s3 + i4*s4 + i5*s5 + i6*s6];
+         #elif DIMS == 8
+-            ulong i567 = get_global_id(0);
+-            ulong i234 = get_global_id(1);
+-            ulong i01  = get_global_id(2);
++            index_t i567 = get_global_id(0);
++            index_t i234 = get_global_id(1);
++            index_t i01  = get_global_id(2);
+             if(i01 >= d0*d1)
+                 return;
+             if(i234 >= d2*d3*d4)
+                 return;
+             if(i567 >= d5*d6*d7)
+                 return;
+-            ulong i0  = i01 / d1;
+-            ulong i1  = i01 % d1;
++            index_t i0  = i01 / d1;
++            index_t i1  = i01 % d1;
+ 
+-            ulong i2  = i234 / (d3*d4);
+-            ulong i34 = i234 % (d3*d4);
+-            ulong i3  = i34 / d4;
+-            ulong i4  = i34 % d4;
++            index_t i2  = i234 / (d3*d4);
++            index_t i34 = i234 % (d3*d4);
++            index_t i3  = i34 / d4;
++            index_t i4  = i34 % d4;
+ 
+-            ulong i5  = i567 / (d6*d7);
+-            ulong i67 = i567 % (d6*d7);
+-            ulong i6  = i67 / d7;
+-            ulong i7  = i67 % d7;
++            index_t i5  = i567 / (d6*d7);
++            index_t i67 = i567 % (d6*d7);
++            index_t i6  = i67 / d7;
++            index_t i7  = i67 % d7;
+ 
+             tgt[i0*t0 + i1*t1 + i2*t2 + i3*t3 + i4*t4 + i5*t5 + i6*t6 + i7*t7] = src[i0*s0 + i1*s1 + i2*s2 + i3*s3 + i4*s4 + i5*s5 + i6*s6 + i7*s7];
+         #else
+         #error "Unsupported dims"
+         #endif
++        #endif // COPY_NO_DIVISION
+ }
+ 
+ 
+diff --git a/src/kernels/depthwise_separable_conv.cl b/src/kernels/depthwise_separable_conv.cl
+index 73a1f93..59b3ddb 100644
+--- a/src/kernels/depthwise_separable_conv.cl
++++ b/src/kernels/depthwise_separable_conv.cl
+@@ -6,7 +6,12 @@
+ ///
+ ///////////////////////////////////////////////////////////////////////////////
+ #include "defs.h"
++#ifndef BUILD_BACKWARD_DATA
++#define BUILD_BACKWARD_DATA 1
++#endif
++#if BUILD_BACKWARD_DATA
+ #include "atomic.h"
++#endif
+ 
+ #define DIM_R 0
+ #define DIM_C 1
+@@ -104,6 +109,7 @@ void conv(int batch,int height,int width,
+ 
+ }
+ 
++#if BUILD_BACKWARD_DATA
+ __kernel
+ void backward_data_conv(int batch,int height,int width,
+           __global float *input,ulong input_offset,
+@@ -179,3 +185,5 @@ void backward_data_conv(int batch,int height,int width,
+         }
+     }
+ }
++
++#endif // BUILD_BACKWARD_DATA
+diff --git a/src/kernels/interpolate_2d.cl b/src/kernels/interpolate_2d.cl
+index 974aeb2..a61513a 100644
+--- a/src/kernels/interpolate_2d.cl
++++ b/src/kernels/interpolate_2d.cl
+@@ -6,7 +6,12 @@
+ ///
+ ///////////////////////////////////////////////////////////////////////////////
+ #include "defs.h"
++#ifndef BILINEAR_BACKWARD
++#define BILINEAR_BACKWARD 1
++#endif
++#if BILINEAR_BACKWARD
+ #include "atomic.h"
++#endif
+ 
+ int get_src_pos(int pos,float scale,int limit,float offset)
+ {
+@@ -158,6 +163,7 @@ void bilinear(
+                 w_r1 * (w_c0 * *x10 + w_c1 * *x11);
+             *y = val;
+         }
++#if BILINEAR_BACKWARD
+         else {
+             dtype val = *y;
+             atomic_addf(x00,w_r0 * w_c0 * val);
+@@ -165,6 +171,7 @@ void bilinear(
+             atomic_addf(x10,w_r1 * w_c0 * val);
+             atomic_addf(x11,w_r1 * w_c1 * val);
+         }
++#endif
+ 
+         x00 += step_src;
+         x01 += step_src;
+diff --git a/src/kernels/pooling.cl b/src/kernels/pooling.cl
+index 41e0d68..cb7f2e2 100644
+--- a/src/kernels/pooling.cl
++++ b/src/kernels/pooling.cl
+@@ -6,7 +6,12 @@
+ ///
+ ///////////////////////////////////////////////////////////////////////////////
+ #include "defs.h"
++#ifndef POOL_GATHER
++#define POOL_GATHER 0
++#endif
++#if !POOL_GATHER
+ #include "atomic.h"
++#endif
+ 
+ #ifndef itype
+ #define itype int
+@@ -150,6 +155,7 @@ void pooling(int BC,int inp_H,int inp_W,int out_H,int out_W,
+     #endif
+ }
+ 
++#if !POOL_GATHER
+ void save_dx(__global dtype *ptr,dtype value)
+ {
+     #if POOL_W <= STRIDE_W && POOL_H <= STRIDE_H
+@@ -160,7 +166,45 @@ void save_dx(__global dtype *ptr,dtype value)
+ 
+ }
+ 
+-#if INDEX_MAX_SRC == 1
++#endif
++
++#if POOL_GATHER && POOL_MODE == 0 && INDEX_MAX_SRC == 0
++// Each work item owns one input-gradient element. Recompute winners only
++// for output windows containing that element; overlapping windows need no CAS.
++__kernel
++__attribute__((reqd_work_group_size(WG_SIZE,WG_SIZE,1)))
++void pooling_bw(int BC,int inp_H,int inp_W,int out_H,int out_W,
++               __global const dtype *src,ulong src_offset,
++               __global const dtype *tgt,ulong tgt_offset,
++               __global dtype *dx,ulong dx_offset)
++{
++    int r=get_global_id(0), c=get_global_id(1), bc=get_global_id(2);
++    if(bc>=BC || r>=inp_H || c>=inp_W) return;
++    src += src_offset + bc*inp_H*inp_W;
++    tgt += tgt_offset + bc*out_H*out_W;
++    dx += dx_offset + bc*inp_H*inp_W;
++    int pos=r*inp_W+c;
++    int rlo=(max(0,r+PAD_H-POOL_H+1)+STRIDE_H-1)/STRIDE_H;
++    int clo=(max(0,c+PAD_W-POOL_W+1)+STRIDE_W-1)/STRIDE_W;
++    int rhi=min(out_H-1,(r+PAD_H)/STRIDE_H);
++    int chi=min(out_W-1,(c+PAD_W)/STRIDE_W);
++    dtype sum=0;
++    for(int y=rlo;y<=rhi;++y) for(int x=clo;x<=chi;++x) {
++        int y0=max(0,y*STRIDE_H-PAD_H), x0=max(0,x*STRIDE_W-PAD_W);
++        int y1=min(inp_H,y*STRIDE_H-PAD_H+POOL_H);
++        int x1=min(inp_W,x*STRIDE_W-PAD_W+POOL_W);
++        dtype best=-INFINITY;
++        int winner=-1;
++        for(int iy=y0;iy<y1;++iy) for(int ix=x0;ix<x1;++ix) {
++            int index=iy*inp_W+ix;
++            dtype v=src[index];
++            if(winner<0 || v>best || isnan(v)) {best=v;winner=index;}
++        }
++        if(winner==pos) sum+=tgt[y*out_W+x];
++    }
++    dx[pos]+=sum;
++}
++#elif INDEX_MAX_SRC == 1
+ __kernel
+ __attribute__((reqd_work_group_size(WG_SIZE,WG_SIZE,1)))
+ void pooling_bw(int BC,int inp_H,int inp_W,int out_H,int out_W,
+diff --git a/src/kernels/sgemm.cl b/src/kernels/sgemm.cl
+index 5a175b4..bfa7350 100644
+--- a/src/kernels/sgemm.cl
++++ b/src/kernels/sgemm.cl
+@@ -61,7 +61,14 @@
+ #define CONVGEMM 0
+ #endif
+ 
+-#if CONVGEMM == 3 || REDUCE_K > 1
++#ifndef FILTER_SPLIT_OUTPUT
++#define FILTER_SPLIT_OUTPUT 0
++#endif
++#if FILTER_SPLIT_OUTPUT && CONVGEMM != 2
++#error "Partial filter output requires convolution backward filter"
++#endif
++
++#if CONVGEMM == 3 || (REDUCE_K > 1 && !FILTER_SPLIT_OUTPUT)
+ #include "atomic.h"
+ #if ACTIVATION != ACTIVATION_IDENTITY
+ # error "Can't use activation with atomic ops"
+@@ -335,6 +342,10 @@ void    sgemm(
+     A += offset_A;
+     B += offset_B;
+     C += offset_C;
++#if FILTER_SPLIT_OUTPUT
++    // Each partition owns a disjoint complete filter matrix; no float atomics.
++    C += (get_global_id(DIM_G) % REDUCE_K) * (M * N * GROUPS);
++#endif
+ #if BATCH_GEMM == 1 
+     int batch_id = get_global_id(DIM_G);
+     if(batch_id >= batches)
+@@ -728,7 +739,7 @@ void    sgemm(
+                         add_img_value(C,row+dr,col+dc,c[dr][dc]);
+                     #else
+                         int index = (row+dr)*ldc+col+dc;
+-                        #if REDUCE_K > 1
++                        #if REDUCE_K > 1 && !FILTER_SPLIT_OUTPUT
+                         atomic_addf(C+index,ACTIVATION_F(c[dr][dc]));
+                         #else
+                         if(beta_factor != 0)
+diff --git a/src/program_cache.cpp b/src/program_cache.cpp
+index 501d028..33d9456 100644
+--- a/src/program_cache.cpp
++++ b/src/program_cache.cpp
+@@ -9,6 +9,7 @@
+ #include <sstream>
+ #include <chrono>
+ #include <iostream>
++#include <cstdlib>
+ #ifdef WITH_SQLITE3
+ #include "binary_cache.hpp"
+ #endif
+@@ -71,6 +72,11 @@ cl::Program Cache::build_program(Context  &ctx,std::string const &source,std::ve
+     std::string ocl_version = ctx.platform().getInfo<CL_PLATFORM_VERSION>();
+     if(ocl_version.substr(7,1) >= "2") 
+ 	    ss << "-cl-std=CL2.0 ";
++    // Some older OpenCL implementations miscompile the built-in work-group
++    // reductions. Allow selecting DLPrimitives' portable local-memory path.
++    char const *custom_reduce = std::getenv("DLPRIM_CUSTOM_REDUCE");
++    if(custom_reduce && std::string(custom_reduce) == "1")
++        ss << "-DCUSTOM_REDUCE=1 ";
+     bool enable_half = ctx.check_device_extension("cl_khr_fp16");
+     for(size_t i=0;i<params.size();i++) {
+         if(i > 0)
+diff --git a/src/kernels/conv_input_gather.cl b/src/kernels/conv_input_gather.cl
+new file mode 100644
+index 0000000..87e4501
+--- /dev/null
++++ b/src/kernels/conv_input_gather.cl
+@@ -0,0 +1,141 @@
++///////////////////////////////////////////////////////////////////////////////
++// Atomic-free input gradients: one pixel or a selected four-pixel group per item.
++// FP32 compatibility path; tensor addresses and work coordinates fit uint32.
++///////////////////////////////////////////////////////////////////////////////
++inline __attribute__((always_inline)) uint2 conv_divmod(uint n,uint d)
++{
++    // Compile-time convolution dimensions normally make this a constant branch.
++    if(d && (d & (d-1u))==0u) {
++        uint shift=0;
++        for(uint value=d;value>1u;value>>=1u)++shift;
++        return (uint2)(n>>shift,n&(d-1u));
++    }
++    uint q=0,r=0;
++    for(int b=31;b>=0;--b) {
++        uint carry=r>>31;
++        r=(r<<1)|((n>>b)&1u);
++        if(carry || r>=d) {r-=d;q|=1u<<b;}
++    }
++    return (uint2)(q,r);
++}
++__kernel void conv_input_gather(uint batch,uint ih,uint iw,uint oh,uint ow,
++                               __global float *dx,uint dxo,
++                               __global const float *w,uint wo,
++                               __global const float *dy,uint dyo,float factor)
++{
++#if GATHER_SPATIAL4
++    uint work_x=get_global_id(0),y=get_global_id(1),bc=get_global_id(2);
++#if SW == 2
++    // Four inputs of the same parity map to adjacent output-gradient pixels.
++    uint x=(work_x>>1)*8u+(work_x&1u);
++#else
++    uint x=work_x*4u;
++#endif
++    if(x>=iw || y>=ih || bc>=batch*CI)return;
++    uint2 channel=conv_divmod(bc,CI);
++    uint b=channel.x,ci=channel.y;
++    uint2 group=conv_divmod(ci,CI/GROUPS);
++    float4 sum=(float4)(0.0f);
++    for(int ky=0;ky<KH;++ky) {
++        int yr=(int)y+PH-ky*DH;
++        if(yr<0)continue;
++        uint2 row=conv_divmod((uint)yr,SH);
++        if(row.y || row.x>=oh)continue;
++        for(int kx=0;kx<KW;++kx) {
++            int xr=(int)x+PW-kx*DW;
++#if SW == 2
++            if(((uint)xr&1u)!=0u)continue;
++#endif
++            int col=xr<0 ? -1 : (int)conv_divmod((uint)xr,SW).x;
++            if(col<0) {
++                for(uint ocg=0;ocg<CO/GROUPS;++ocg) {
++                    uint oc=group.x*(CO/GROUPS)+ocg;
++                    uint wi=wo+((oc*(CI/GROUPS)+group.y)*KH+ky)*KW+kx;
++                    uint base=dyo+((b*CO+oc)*oh+row.x)*ow;
++                    float weight=w[wi];
++                    float4 values=vload4(0,dy+base);
++                    sum.s1+=weight*values.s0;
++                    sum.s2+=weight*values.s1;
++                    sum.s3+=weight*values.s2;
++                }
++            }
++            else if(col+3>=(int)ow) {
++                for(uint ocg=0;ocg<CO/GROUPS;++ocg) {
++                    uint oc=group.x*(CO/GROUPS)+ocg;
++                    uint wi=wo+((oc*(CI/GROUPS)+group.y)*KH+ky)*KW+kx;
++                    uint base=dyo+((b*CO+oc)*oh+row.x)*ow;
++                    float weight=w[wi];
++                    float4 values=vload4(0,dy+base+(uint)col-1u);
++                    sum.s0+=weight*values.s1;
++                    sum.s1+=weight*values.s2;
++                    sum.s2+=weight*values.s3;
++                }
++            }
++            else {
++                for(uint ocg=0;ocg<CO/GROUPS;++ocg) {
++                    uint oc=group.x*(CO/GROUPS)+ocg;
++                    uint wi=wo+((oc*(CI/GROUPS)+group.y)*KH+ky)*KW+kx;
++                    uint base=dyo+((b*CO+oc)*oh+row.x)*ow;
++                    float weight=w[wi];
++                    sum+=weight*vload4(0,dy+base+(uint)col);
++                }
++            }
++        }
++    }
++    uint pos=dxo+((b*CI+ci)*ih+y)*iw+x;
++#if SW == 2
++    if(factor!=0) {
++        sum.s0+=factor*dx[pos];sum.s1+=factor*dx[pos+2];
++        sum.s2+=factor*dx[pos+4];sum.s3+=factor*dx[pos+6];
++    }
++    dx[pos]=sum.s0;dx[pos+2]=sum.s1;dx[pos+4]=sum.s2;dx[pos+6]=sum.s3;
++#else
++    if(factor!=0)sum+=factor*vload4(0,dx+pos);
++    vstore4(sum,0,dx+pos);
++#endif
++#elif GATHER_VECTOR4
++    uint x=get_global_id(0)*4u,y=get_global_id(1),bc=get_global_id(2);
++    if(x>=iw || y>=ih || bc>=batch*CI)return;
++    uint2 channel=conv_divmod(bc,CI);
++    uint b=channel.x,ci=channel.y;
++    uint2 group=conv_divmod(ci,CI/GROUPS);
++    float4 sum=(float4)(0.0f);
++    for(uint ocg=0;ocg<CO/GROUPS;++ocg) {
++        uint oc=group.x*(CO/GROUPS)+ocg;
++        uint wi=wo+oc*(CI/GROUPS)+group.y;
++        uint di=dyo+((b*CO+oc)*oh+y)*ow+x;
++        sum+=w[wi]*vload4(0,dy+di);
++    }
++    uint pos=dxo+((b*CI+ci)*ih+y)*iw+x;
++    if(factor!=0)sum+=factor*vload4(0,dx+pos);
++    vstore4(sum,0,dx+pos);
++#else
++    uint x=get_global_id(0),y=get_global_id(1),bc=get_global_id(2);
++    if(x>=iw || y>=ih || bc>=batch*CI)return;
++    uint2 channel=conv_divmod(bc,CI);
++    uint b=channel.x,ci=channel.y;
++    uint2 group=conv_divmod(ci,CI/GROUPS);
++    float sum=0;
++    for(int ky=0;ky<KH;++ky) {
++        int yr=(int)y+PH-ky*DH;
++        if(yr<0)continue;
++        uint2 row=conv_divmod((uint)yr,SH);
++        if(row.y || row.x>=oh)continue;
++        for(int kx=0;kx<KW;++kx) {
++            int xr=(int)x+PW-kx*DW;
++            if(xr<0)continue;
++            uint2 col=conv_divmod((uint)xr,SW);
++            if(col.y || col.x>=ow)continue;
++            for(uint ocg=0;ocg<CO/GROUPS;++ocg) {
++                uint oc=group.x*(CO/GROUPS)+ocg;
++                uint wi=((oc*(CI/GROUPS)+group.y)*KH+ky)*KW+kx;
++                uint di=((b*CO+oc)*oh+row.x)*ow+col.x;
++                sum+=w[wo+wi]*dy[dyo+di];
++            }
++        }
++    }
++    uint pos=dxo+((b*CI+ci)*ih+y)*iw+x;
++    if(factor==0)dx[pos]=sum;
++    else dx[pos]=factor*dx[pos]+sum;
++#endif
++}
+diff --git a/src/kernels/filter_split_reduce.cl b/src/kernels/filter_split_reduce.cl
+new file mode 100644
+index 0000000..1cb529c
+--- /dev/null
++++ b/src/kernels/filter_split_reduce.cl
+@@ -0,0 +1,13 @@
++// Fixed-order, destination-owned reduction of disjoint filter partials.
++__kernel void filter_split_reduce(uint count,
++                                 __global const float *partial,uint po,
++                                 __global float *dw,uint wo,float factor)
++{
++    uint i=get_global_id(0);
++    if(i>=count)return;
++    float sum=0;
++    for(uint part=0;part<FILTER_PARTITIONS;++part)
++        sum+=partial[po+part*count+i];
++    if(factor==0)dw[wo+i]=sum;
++    else dw[wo+i]=factor*dw[wo+i]+sum;
++}
+diff --git a/src/kernels/pack_byte_output.cl b/src/kernels/pack_byte_output.cl
+new file mode 100644
+index 0000000..e1431be
+--- /dev/null
++++ b/src/kernels/pack_byte_output.cl
+@@ -0,0 +1,19 @@
++// One work item owns one complete32-bit destination word; no subword stores.
++__kernel void pack_byte_output(__global const int *src,uint src_offset,
++                               __global uint *dst,uint dst_offset,uint count)
++{
++    uint word=get_global_id(0);
++    uint words=(count>>2)+((count&3u)!=0u);
++    if(word>=words)return;
++    uint packed=0;
++    for(uint lane=0;lane<4;lane++) {
++        uint i=word*4+lane;
++        uint value=i<count?((uint)src[src_offset+i]&255u):0u;
++#if LITTLE_ENDIAN_BYTES
++        packed|=value<<(lane*8);
++#else
++        packed|=value<<((3-lane)*8);
++#endif
++    }
++    dst[dst_offset+word]=packed;
++}

@@ -1,0 +1,18 @@
+{
+  "date": "2026-10-28",
+  "checks": {
+    "selected_operator_suite": "10 checks passed",
+    "memory_reporting": "passed known allocation, alias, release, peak/reset and nonblocking progress checks",
+    "complete_epoch": "48 train / 8 validation images, 2 optimizer updates, checkpoint CPU reload and inference passed",
+    "portable_example": "complete epoch, validation and saved checkpoint CPU reload passed",
+    "runtime_patch": "applies to recorded upstream base and reconstructs all 16 modified/new runtime files byte-for-byte",
+    "mesa_patch": "dry-run against pristine 25.0.7 passed",
+    "clean_runtime_core_build": "passed from pristine archive plus distributed patch",
+    "new_recorded_kernel_faults": 0
+  },
+  "known_limits": [
+    "Final 256/32 tuning has bounded tests, not a repeated 30-epoch run.",
+    "Raw standalone microbenchmark showed intermittent control/variant discrepancies; no tile-depth variant was accepted.",
+    "1 GiB HD68xx/58xx settings not validated."
+  ]
+}

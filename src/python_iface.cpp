@@ -60,6 +60,7 @@ namespace ptdlprim {
             CLContextManager::rng_state(i).seed(seed);
             if(CLContextManager::is_ready(i)) {
                 CLContextManager::getCommandQueue(i).finish();
+                CLContextManager::drain_deferred(i,true);
             }
         }
 
@@ -71,11 +72,13 @@ namespace ptdlprim {
             for(int i=0;i<N;i++) {
                 if(CLContextManager::is_ready(i)) {
                     CLContextManager::getCommandQueue(i).finish();
+                CLContextManager::drain_deferred(i,true);
                 }
             }
         }
         else {
             CLContextManager::getCommandQueue(index).finish();
+            CLContextManager::drain_deferred(index,true);
         }
     }
     bool is_bad_fork()

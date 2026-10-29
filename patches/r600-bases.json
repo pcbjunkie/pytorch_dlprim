@@ -1,0 +1,6 @@
+{
+  "dlprimitives_base": "3fb233e6e83ee6c793fdc6bc58ef71995eced7a4",
+  "mesa_version": "25.0.7",
+  "mesa_archive_sha256": "592272df3cf01e85e7db300c449df5061092574d099da275d19e97ef0510f8a6",
+  "combined_dlprim_patch_includes_portable_reductions": true
+}

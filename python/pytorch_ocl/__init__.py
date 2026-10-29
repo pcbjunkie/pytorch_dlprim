@@ -74,7 +74,10 @@ class _OCL:
         """Allocator counters only; excludes driver allocations and other processes.
 
         Allocated counts requested live storage bytes (views are not counted twice).
-        Reserved counts rounded live and cached OpenCL buffers.
+        Reserved counts rounded live, cached and deferred-retirement OpenCL
+        buffers. Peaks cover this process since startup or the last explicit
+        reset. Neither value describes the driver's global pool or whole-card
+        VRAM. Reading counters does not synchronize the GPU.
         """
         index = impl_current_device() if device is None else _device_index(device)
         return impl_memory_stats(index, False)

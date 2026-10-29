@@ -1,5 +1,10 @@
 # Pytorch OpenCL backend based on dlprimitives
 
+Radeon development fork: see [local changes](LOCAL_CHANGES.md) and the
+[experimental legacy Radeon build/profile guide](docs/r600-clover.md).
+The upstream network/device results below are retained as upstream documentation;
+they are not a validation matrix for this fork's new r600 paths.
+
 DLPrimitives-OpenCL out of tree backend for pytorch
 
 It is only beginning, but you can train some vision nets using OpenCL devices.

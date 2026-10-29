@@ -1,5 +1,8 @@
 #include <torch/torch.h>
 #include <ATen/ATen.h>
+#include <ATen/ops/silu_backward_compositeimplicitautograd_dispatch.h>
+#include <cstdlib>
+#include <cstring>
 #include "CLTensor.h"
 #include "utils.h"
 
@@ -190,6 +193,7 @@ using c10::DeviceType;
     Tensor &unitary_op(const Tensor &self,Tensor &out,std::string const &op)
     {
         GUARD;
+        if(out.numel()==0)return out;
         Tensor self_c = self.contiguous(), out_c = out.contiguous();
         
         dlprim::Tensor x=todp(self_c);
@@ -252,6 +256,7 @@ using c10::DeviceType;
     Tensor & comp_out(const Tensor & self, const Scalar & other, Tensor & out,std::string const &op)
     {
         GUARD;
+        if(out.numel()==0)return out;
         Tensor self_c = self.contiguous(), out_c = out.contiguous();
         
         dlprim::Tensor x0=todp(self_c);
@@ -381,6 +386,7 @@ using c10::DeviceType;
     Tensor & binary_op_out_tensor(const Tensor & self, const Tensor & other, Tensor & out,std::string const &op,std::string op_builder="")
     {
         GUARD;
+        if(out.numel()==0)return out;
         Tensor self_c  = self.contiguous(), out_c = out.contiguous(),
                other_c = other.contiguous();
         
@@ -1119,7 +1125,7 @@ using c10::DeviceType;
                
         dlprim::Tensor x=todp(self_c);
         dlprim::Tensor dy=todp(grad_output_c);
-        dlprim::Tensor dx=todp(grad_input);
+        dlprim::Tensor dx=todp(grad_input_c);
         dlprim::core::pointwise_operation({x,dy},{dx},{},
             R"xxx(
                 y0 = 1.0f / (1.0f + exp(-x0));
@@ -1132,6 +1138,20 @@ using c10::DeviceType;
         
         sync_if_needed(self.device());
         return grad_input;
+    }
+
+    Tensor silu_backward(const Tensor &grad_output,const Tensor &self)
+    {
+        GUARD;
+        char const *enabled=std::getenv("DLPRIM_FUSED_SILU_BACKWARD");
+        if(!enabled || std::strcmp(enabled,"1")!=0 ||
+           self.scalar_type()!=at::kFloat || grad_output.scalar_type()!=at::kFloat ||
+           self.device()!=grad_output.device() || self.sizes()!=grad_output.sizes() ||
+           (at::GradMode::is_enabled() && (self.requires_grad() || grad_output.requires_grad())))
+            return at::compositeimplicitautograd::silu_backward(grad_output,self);
+        Tensor result=new_ocl_tensor(self.sizes(),self.device(),self.scalar_type());
+        if(self.numel())silu_backward_out(grad_output,self,result);
+        return result;
     }
 
     // {"schema": "aten::tanh(Tensor self) -> Tensor", "dispatch": "True", "default": "True"}
@@ -1375,6 +1395,7 @@ using c10::DeviceType;
     Tensor & ne_out(const Tensor & self, const Scalar & other, Tensor & out)
     {
         GUARD;
+        if(out.numel()==0)return out;
         Tensor self_c = self.contiguous(), out_c = out.contiguous();
         
         dlprim::Tensor x(todp(self_c));
@@ -1421,6 +1442,7 @@ using c10::DeviceType;
     Tensor & eq_out(const Tensor & self, const Scalar & other, Tensor & out)
     {
         GUARD;
+        if(out.numel()==0)return out;
         Tensor self_c = self.contiguous(), out_c = out.contiguous();
         
         dlprim::Tensor x(todp(self_c));
@@ -1789,6 +1811,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
       m.impl("aten::tanh_backward.grad_input",&ptdlprim::tanh_backward_out);
       m.impl("aten::silu.out",&ptdlprim::silu_out);
       m.impl("aten::silu_backward.grad_input",&ptdlprim::silu_backward_out);
+      m.impl("aten::silu_backward",&ptdlprim::silu_backward);
       m.impl("aten::tanh",&ptdlprim::tanh);
       m.impl("aten::tanh_",&ptdlprim::tanh_);
       m.impl("aten::leaky_relu.out",&ptdlprim::leaky_relu_out);
@@ -1849,6 +1872,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
 }
 
 TORCH_LIBRARY_IMPL(aten, AutogradPrivateUse1, m) {
+      m.impl("aten::silu_backward",&ptdlprim::silu_backward);
       m.impl("aten::relu",&ptdlprim::act_autograd<dlprim::StandardActivations::relu>);
 }
 

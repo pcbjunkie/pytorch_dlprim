@@ -1,39 +1,62 @@
-# Radeon OpenCL backend development snapshot
+# Radeon OpenCL development snapshot
 
-This branch preserves upstream pytorch_dlprim history. It is an experimental development snapshot, not a general hardware-support or performance claim. Wildlife application, training adapters, datasets and model checkpoints belong in the separate squirltool project.
+This fork retains Artyom Beilis's project name and upstream history. It is an
+experimental source snapshot, not a general hardware-support claim or an
+upstream-reviewed release. The wildlife app, data and model weights are separate.
 
-## Tested environment
+The earlier R9 270 / Mesa 25.0.7 Clover profile completed 100 epochs. The baseline
+HD 6970 / patched r600 Clover profile has now completed 30 epochs from random
+weights at batch 24, 256px FP32. Losses remained finite; CPU validation of the
+saved best model agreed with GPU validation at displayed precision. A separate
+post-run gradient check passed (cosine 0.999982, norm ratio 0.999658). This is
+evidence of stable training, not a claim of adequate model accuracy or bitwise
+CPU/GPU equality. HD 68xx and HD 58xx current-profile testing remains pending.
+The final filter-partition/queue tuning has bounded CPU/benchmark checks;
+the completed 30-epoch run used target 128 and queue limit 16.
 
-Debian 12, Linux 6.1, AMD Phenom II X4 955, Radeon R9 270 (Pitcairn, 2 GB), Mesa 25.0.7 Clover, Python 3.11, PyTorch 2.4.1 CPU wheel. A separate Mesa 23.1.9 Rusticl runtime was also used for earlier checks. The latest operator pass was checked on Clover. Older VLIW Radeon cards have not yet been tested.
+## Main changes
 
-## Changes
+See [changes by layer](docs/changes-by-layer.md) for module ownership and the
+distinction between reproduced bugs, algorithm changes and legacy workarounds.
 
-- Device discovery/selection/properties and current-device allocation behavior.
-- Mixed scalar promotion, hardtanh/ReLU6 gradients, and repeat/view-fallback correctness fixes.
-- GPU vector norms, masking/where and small-axis scatter operations.
-- Batched L2 norms/scalar packing; grouped foreach updates for native SGD/clipping; fused grouped EMA.
-- GPU nonzero and advanced-index reads; indexed writes with repeated-index FP32 gradient accumulation.
-- GPU addmv, small-k topk, small-list unique/counts/inverse, and FP32 max pooling with spatial indices.
-- Per-device allocator live/reserved/cache/peak counters exposed through torch.ocl. Counters exclude driver allocations and other processes.
+- Device discovery/selection and per-device live/reserved/cache/peak accounting.
+- Scalar promotion, repeat/view fallback and pointwise destination-offset fixes.
+- GPU norms, batched clipping/SGD/EMA, masking, scatter, advanced indexing,
+  addmv, bounded small-k topk, small-list unique and max pooling with indices.
+- Legacy 32-bit indexing/division and packed-byte-store compatibility paths;
+  conservative explicit workgroups and standalone correctness reproducers.
+- Atomic-free gather input/pooling gradients and split filter gradients;
+  vectorized input gradients, fused SiLU backward and sorted indexed reduction.
+- Tight no-cache allocation plus bounded deferred retirement behind GPU markers.
+- Optional meaningful YOLO allocator-peak reporting, separate from driver VRAM.
 
-The full wildlife run completed 100 epochs using an earlier frozen backend. The subsequent operator pass passed CPU-reference tests, two CPU-matched YOLO steps, and a short complete training/validation/checkpoint-reload run with no warnings. No throughput gain is claimed for that pass.
+See [the r600 build/profile guide](docs/r600-clover.md) for relocatable launch
+commands, settings, per-card pool-reservation evidence and memory meanings.
+[Benchmark evidence](docs/r600-performance.md) records the measured improvements.
+[Historical investigation notes](docs/r600-history.md) retain intermediate
+failures and provisional conclusions; their old 'training disabled/pending'
+statements describe those earlier snapshots, not the final selected profile.
 
-## Build and runtime patch
+## Reproducible source dependencies
 
-Follow README-build.md. Keep the upstream dlprimitives submodule at its recorded commit. An optional separate runtime patch is stored in patches/dlprimitives-portable-reductions.patch; apply it inside the submodule with:
-
-```sh
-git -C dlprimitives apply ../patches/dlprimitives-portable-reductions.patch
-```
-
-This adds DLPRIM_CUSTOM_REDUCE=1 to select portable reductions for the tested older Rusticl runtime. The patch is retained here for reproducibility and can be proposed independently to DLPrimitives. The submodule gitlink remains upstream; no unpublished commit is required to clone this branch.
-
-## Checks
-
-After installing the backend, run the scripts in tests/local with an interpreter that imports the newly built pytorch_ocl. They require torch and numpy; see script imports for other optional requirements. They check values, gradients, alias/version behavior and empty/error/stride cases against CPU. They are not inference or end-to-end performance benchmarks.
+The upstream dlprimitives gitlink is unchanged. All modified runtime sources,
+including new kernels, are shipped in `patches/dlprimitives-r600-clover.patch`.
+Apply it to the recorded submodule base; it already includes the older portable
+reductions patch. The separate Mesa patch applies to pristine Mesa 25.0.7. Exact
+bases are in `patches/r600-bases.json`. No unpublished submodule commit, local
+binary, dataset, credential or model checkpoint is needed to recover the code.
 
 ## Limits before upstream submission
 
-Some operators only accelerate the FP32/dtype/shape cases used by these models. Unsupported cases keep CPU paths and diagnostics. Unique rank sorting is capped at 4096 elements; topk uses repeated selection suited to small k; non-FP32 index accumulation uses simple destination-owned reduction. Broader optimization is future work.
+Some fast paths support only the dtypes/layouts/shapes used by these models;
+other cases keep existing fallbacks and diagnostics. Unique rank sorting is
+bounded to 4096 values and legacy topk selection favors k <=32. Native BN's
+saved-statistic public ATen contract, general view/out/storage bounds and
+separate odd-spatial convolution failures still need broader audit. Mesa's
+later pool-growth OOM handling and GTT/single-buffer limits are unresolved.
 
-Resolve the existing native_batch_norm saved-variance versus ATen saved-inverse-standard-deviation convention before claiming complete ATen compatibility. Audit general view/alias/out behavior and arbitrary strided-storage allocation bounds. Multi-GPU enumeration exists; DataParallel/DDP OpenCL execution is not established. Split this snapshot into focused, reviewed PRs before upstream submission.
+The workgroup and subword-store workarounds have reproducible evidence, but
+their exact compiler/driver/hardware root causes are not all established.
+Multi-GPU enumeration exists; OpenCL DataParallel/DDP training is not validated.
+No FP16 or untested-card support is promised. Keep correctness fixes, driver
+patches and performance work in separate focused upstream proposals later.

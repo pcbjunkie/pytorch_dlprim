@@ -158,8 +158,19 @@ using c10::DeviceType;
             }
         }
         else if(self.device().type() == OpenCLDeviceType && dst.device().type() == OpenCLDeviceType) {
-            if(self.is_contiguous() && dst.is_contiguous()) {
-                dlprim::core::pointwise_operation_broadcast({todp(self)},{todp(dst)},{},"y0=x0;",getExecutionContext(self.device()));
+            const char *packed=std::getenv("DLPRIM_PACKED_BYTE_OUTPUTS");
+            bool byte_conversion=packed && std::string(packed)=="1" &&
+                self.scalar_type()!=dst.scalar_type() &&
+                (dst.scalar_type()==at::kBool || dst.scalar_type()==at::kChar || dst.scalar_type()==at::kByte);
+            if(byte_conversion && (!self.is_contiguous() || !dst.is_contiguous())) {
+                auto input=self.contiguous();
+                auto output=at::empty(dst.sizes(),dst.options());
+                output.copy_(input);
+                dst.copy_(output);
+            }
+            else if(self.is_contiguous() && dst.is_contiguous()) {
+                dlprim::core::pointwise_operation_broadcast({todp(self)},{todp(dst)},{},
+                    dst.scalar_type()==at::kBool ? "y0=(x0!=0);" : "y0=x0;",getExecutionContext(self.device()));
             }
             else {
                 auto src_sizes  = self.sizes();
@@ -185,6 +196,11 @@ using c10::DeviceType;
         }
         else {
             throw std::runtime_error("OpenCL supports copy to CPU backend only");
+        }
+        char const *sync_copy = std::getenv("OPENCL_SYNC_COPY");
+        if(sync_copy && std::atoi(sync_copy)) {
+            auto dev = self.device().type() == OpenCLDeviceType ? self.device() : dst.device();
+            getExecutionContext(dev).queue().finish();
         }
         return self;
     }
