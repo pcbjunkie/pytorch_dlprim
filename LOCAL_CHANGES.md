@@ -42,9 +42,13 @@ statements describe those earlier snapshots, not the final selected profile.
 The upstream dlprimitives gitlink is unchanged. All modified runtime sources,
 including new kernels, are shipped in `patches/dlprimitives-r600-clover.patch`.
 Apply it to the recorded submodule base; it already includes the older portable
-reductions patch. The separate Mesa patch applies to pristine Mesa 25.0.7. Exact
-bases are in `patches/r600-bases.json`. No unpublished submodule commit, local
-binary, dataset, credential or model checkpoint is needed to recover the code.
+reductions patch. The legacy profile pins the separate
+[Mesa compatibility fork](https://github.com/pcbjunkie/mesa/tree/r600-clover-25.0)
+at `0da01a371eb1819211a61bd5e6b506de4d3bca6c`. The retained Mesa patch is an
+alternative for pristine 25.0.7 archives, not an extra patch to apply to the fork.
+Exact bases and the conditional dependency are in `patches/r600-bases.json`.
+No unpublished submodule commit, local binary, dataset, credential or model
+checkpoint is needed to recover the code.
 
 ## Limits before upstream submission
 

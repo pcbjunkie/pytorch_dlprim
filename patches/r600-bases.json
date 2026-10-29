@@ -2,5 +2,10 @@
   "dlprimitives_base": "3fb233e6e83ee6c793fdc6bc58ef71995eced7a4",
   "mesa_version": "25.0.7",
   "mesa_archive_sha256": "592272df3cf01e85e7db300c449df5061092574d099da275d19e97ef0510f8a6",
-  "combined_dlprim_patch_includes_portable_reductions": true
+  "combined_dlprim_patch_includes_portable_reductions": true,
+  "mesa_git_repository": "https://github.com/pcbjunkie/mesa.git",
+  "mesa_git_branch": "r600-clover-25.0",
+  "mesa_git_commit": "0da01a371eb1819211a61bd5e6b506de4d3bca6c",
+  "mesa_upstream_base": "742a20f48c59e8649533c84c4d49dd95b403f5da",
+  "mesa_requirement_scope": "legacy-r600-clover profile only; not the general OpenCL backend or Squirltool CPU runtime"
 }

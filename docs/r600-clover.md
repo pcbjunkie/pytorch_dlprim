@@ -51,21 +51,39 @@ git -C dlprimitives apply --check ../patches/dlprimitives-r600-clover.patch
 git -C dlprimitives apply ../patches/dlprimitives-r600-clover.patch
 ```
 
-See `patches/r600-bases.json` for the exact base and Mesa archive SHA256. Apply
-`patches/mesa-25.0.7-r600-clover.patch` to pristine Mesa 25.0.7 using `patch -p1`.
+The legacy r600/Clover profile requires the patched
+[Mesa compatibility fork](https://github.com/pcbjunkie/mesa/tree/r600-clover-25.0),
+pinned to commit `0da01a371eb1819211a61bd5e6b506de4d3bca6c`. This is a requirement
+for this profile, not for other OpenCL drivers or Squirltool's CPU runtime.
+Clover was removed from later Mesa; do not substitute the fork's default `main`
+branch or a moving upstream revision.
+
+From the backend repository root:
+
+```sh
+git clone --single-branch --branch r600-clover-25.0 https://github.com/pcbjunkie/mesa.git mesa-r600
+git -C mesa-r600 checkout --detach 0da01a371eb1819211a61bd5e6b506de4d3bca6c
+```
+
+The fork already contains the driver changes: **do not apply the Mesa patch
+again**. `patches/r600-bases.json` records the repository, exact commit, upstream
+base and original archive SHA256. For an archive-based build instead, the retained
+`patches/mesa-25.0.7-r600-clover.patch` applies to pristine Mesa 25.0.7 with
+`patch -p1`; this is an alternative to using the fork.
+
 Build an **isolated** Mesa prefix, retaining a known-working system display
 driver. The tested Mesa configuration used LLVM 15, r600 and Clover ICD, no
 OpenGL/Vulkan/display platforms; a Rusticl build was present but was not used
 for the successful training. Relevant Meson options:
 
 ```sh
-meson setup build-r600 --prefix="$PWD/runtime-r600" --libdir=lib --buildtype=release \
+meson setup mesa-r600/build-r600 mesa-r600 --prefix="$PWD/runtime-r600" --libdir=lib --buildtype=release \
   -Dgallium-drivers=r600 -Dgallium-opencl=icd -Dvulkan-drivers= -Dplatforms= \
   -Dopengl=false -Dgles1=disabled -Dgles2=disabled -Degl=disabled \
   -Dglx=disabled -Dgbm=disabled -Dgallium-va=disabled -Dgallium-vdpau=disabled \
   -Dllvm=enabled -Dshared-llvm=enabled -Dbuild-tests=false
-ninja -C build-r600
-meson install -C build-r600
+ninja -C mesa-r600/build-r600
+meson install -C mesa-r600/build-r600
 ```
 
 Mesa development dependencies and supported build options must match that

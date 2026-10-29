@@ -51,8 +51,9 @@ the kernels and controls their geometry.
 
 ## Mesa: actual r600 driver fixes
 
-These are **separate from DLPrimitives** and delivered independently as
-`patches/mesa-25.0.7-r600-clover.patch`:
+These are **separate from DLPrimitives** and published in the pinned
+[Mesa compatibility fork](https://github.com/pcbjunkie/mesa/tree/r600-clover-25.0).
+`patches/mesa-25.0.7-r600-clover.patch` is retained as an archive-build alternative:
 
 | Mesa module | Changes |
 | --- | --- |
