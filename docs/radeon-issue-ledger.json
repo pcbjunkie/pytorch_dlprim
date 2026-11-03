@@ -1,0 +1,268 @@
+{
+  "updated": "2026-11-03",
+  "purpose": "Upstream review issue register, not universal support claim",
+  "issues": [
+    {
+      "id": "MEM-01",
+      "topic": "r600 overlapping compute-pool allocations",
+      "layer": "Mesa r600 compute_memory_pool.c",
+      "classification": "reproduced correctness defect",
+      "discovery_hardware": "Exact first card not yet audited; do not infer from later training",
+      "status": "retain placement fix",
+      "evidence": [
+        "docs/changes-by-layer.md",
+        "patches/mesa-25.0.7-r600-clover.patch"
+      ]
+    },
+    {
+      "id": "MEM-02",
+      "topic": "GPU temporary lifetime and ordinary cache reuse",
+      "layer": "backend src/CLTensor.cpp",
+      "classification": "correctness protection plus bounded asynchronous scheduling",
+      "discovery_hardware": "R9 270 ordinary-cache failure independently reproduced; earlier r600 investigation also involved temporary lifetimes",
+      "status": "retain deferred retirement; underlying ordinary-cache failure not fully isolated",
+      "evidence": [
+        "docs/r9-topk-local-storage.md",
+        "tests/local/check_deferred_release.py"
+      ]
+    },
+    {
+      "id": "MEM-03",
+      "topic": "initial pool reservation and tight allocations",
+      "layer": "Mesa pool plus backend allocator",
+      "classification": "capacity/performance policy",
+      "discovery_hardware": "per-card experiments; first discovery pending audit",
+      "status": "retain tested per-card reservation; GCN uses ordinary allocation",
+      "evidence": [
+        "docs/r600-clover.md",
+        "docs/RADEON_BENCHMARKS.md"
+      ]
+    },
+    {
+      "id": "SYNC-01",
+      "topic": "copy-cache flush around pool migration",
+      "layer": "Mesa r600_hw_context.c",
+      "classification": "ordering/visibility workaround",
+      "discovery_hardware": "HD6970 Cayman",
+      "status": "OFF in all verified legacy profiles with per-kernel flush ON",
+      "evidence": [
+        "runs/hd6970-poc/COPY_POOL_ORDERING.md",
+        "runs/hd6850-copyflush-revisit-20261101",
+        "runs/hd6850-kernelflush-revisit-20261101",
+        "docs/benchmarks/radeon-baseline-release-v1.json"
+      ]
+    },
+    {
+      "id": "SYNC-02",
+      "topic": "per-kernel clFlush",
+      "layer": "OpenCL launch shim tools/r600_flush_after_kernel.c",
+      "classification": "submission workaround; exact root cause unknown",
+      "discovery_hardware": "HD5870 Cypress",
+      "status": "retain on Cypress/Barts/Cayman; removal controls failed; root cause not isolated",
+      "evidence": [
+        "docs/hd5870-results.md",
+        "runs/hd6850-kernelflush-revisit-20261101",
+        "runs/hd6850-kernelflush-off-copyflush-on-20261101",
+        "docs/benchmarks/radeon-baseline-release-v1.json"
+      ]
+    },
+    {
+      "id": "TYPE-01",
+      "topic": "packed byte stores and int8 scatter widened to FP32",
+      "layer": "DLPrim pointwise/util kernels and backend scatter_ops.cpp",
+      "classification": "subword-store compatibility workaround",
+      "discovery_hardware": "HD6970 Cayman",
+      "status": "native bytes verified Cypress/Barts; packed bytes required Cayman; all completed20addedepochs",
+      "evidence": [
+        "tests/local/check_packed_byte_outputs.py",
+        "tests/local/check_packed_scatter.py",
+        "runs/hd6850-workgroup-conversion-opt-20261101",
+        "runs/hd6850-wg128-native-stability20-20261101",
+        "runs/hd6970-minimal-v1-confirmation-20261101",
+        "docs/benchmarks/radeon-baseline-release-v1.json"
+      ]
+    },
+    {
+      "id": "WG-01",
+      "topic": "automatic workgroup cap32 and X-first layout",
+      "layer": "launch shim tools/r600_auto_workgroups.c",
+      "classification": "launch compatibility workaround",
+      "discovery_hardware": "Cayman lane-dependent indexing/copy failures; first introduction provenance still to audit",
+      "status": "automatic128 Cypress/Barts,32 Cayman; explicit kernel widths untouched",
+      "evidence": [
+        "runs/hd6850-workaround-revisit-20261101",
+        "runs/hd6850-workgroup-conversion-opt-20261101",
+        "runs/hd6970-minimal-v1-cpuinput-confirmation-20261102",
+        "runs/hd6970-minimal-v1-auto32-confirmation-20261102",
+        "docs/benchmarks/radeon-baseline-release-v1.json"
+      ]
+    },
+    {
+      "id": "WG-02",
+      "topic": "BatchNorm cap64 and matching workspace",
+      "layer": "DLPrim src/core/bn.cpp",
+      "classification": "launch compatibility workaround",
+      "discovery_hardware": "HD6970 Cayman",
+      "status": "BN128 Cypress/Barts; Cayman retains64 after larger-shape hangs",
+      "evidence": [
+        "tests/local/check_legacy_bn_workgroup_cap.py",
+        "runs/hd6850-workgroup-conversion-opt-20261101",
+        "runs/hd6970-minimal-v1-packed-confirmation-20261102",
+        "docs/cayman-bn-transition.md",
+        "docs/benchmarks/radeon-baseline-release-v1.json"
+      ]
+    },
+    {
+      "id": "GEMM-01",
+      "topic": "small GEMM tiles",
+      "layer": "DLPrim src/gemm.cpp",
+      "classification": "tile compatibility workaround",
+      "discovery_hardware": "historical M256 N1152 K128 hang documented; exact first card pending source-log audit",
+      "status": "normal tiles verified Barts; small tiles required Cypress/Cayman after controlled hangs",
+      "evidence": [
+        "tests/local/check_legacy_conv_small_tiles.py",
+        "runs/hd6850-gemmtiles-revisit-20261101",
+        "runs/hd6970-minimal-v1-packed-bn64-confirmation-20261102",
+        "runs/hd5870-minimal-v1-confirmation-20261102",
+        "runs/hd5870-minimal-v1-smalltiles-confirmation-20261102",
+        "docs/benchmarks/radeon-baseline-release-v1.json"
+      ]
+    },
+    {
+      "id": "ALG-01",
+      "topic": "disable Winograd",
+      "layer": "DLPrim src/core/conv.cpp and Winograd kernels",
+      "classification": "compiler compatibility restriction",
+      "discovery_hardware": "original first-card record pending audit; independently confirmed HD6850 Barts now",
+      "status": "retain for training; LLVM AtomicCmpSwap selection abort in winconv_3x3_bwd_filter; forward-only not separately qualified",
+      "evidence": [
+        "runs/hd6850-winograd-splitk-revisit-20261101/winograd-focused.log"
+      ]
+    },
+    {
+      "id": "ALG-02",
+      "topic": "disable ordinary GEMM split-K",
+      "layer": "DLPrim src/gemm.cpp and sgemm kernel",
+      "classification": "compiler compatibility restriction",
+      "discovery_hardware": "original first-card record pending audit; independently confirmed HD6850 Barts now",
+      "status": "retain; LLVM AtomicCmpSwap selection abort in sgemm",
+      "evidence": [
+        "runs/hd6850-winograd-splitk-revisit-20261101/splitk-focused.log"
+      ]
+    },
+    {
+      "id": "ALG-03",
+      "topic": "atomic-free convolution/pool gather and fixed launch geometry",
+      "layer": "DLPrim core/conv.cpp and core/pool.cpp plus kernels",
+      "classification": "compatibility algorithms with performance tuning",
+      "discovery_hardware": "convolution geometry hangs on HD6850 and HD6970; exact first atomic-compile failure provenance pending",
+      "status": "retain gather; Barts removal controls abort LLVM AtomicCmpSwap selection",
+      "evidence": [
+        "tests/local/check_legacy_conv_gather.py",
+        "tests/local/check_pool_gather.py",
+        "docs/r600-history.md",
+        "runs/hd6850-gather-revisit-20261101",
+        "docs/benchmarks/radeon-baseline-release-v1.json"
+      ]
+    },
+    {
+      "id": "IDX-01",
+      "topic": "32-bit metadata, branchless divmod, cap32 and flattened strided copies",
+      "layer": "backend index/training_ops and DLPrim core/util.cpp",
+      "classification": "legacy correctness workarounds; separate arithmetic from geometry",
+      "discovery_hardware": "HD6970 Cayman standalone reproducers",
+      "status": "32-bit arithmetic fixes retained; index128 and original copy layout verified on all3legacycards",
+      "evidence": [
+        "runs/hd6970-poc/NONZERO_BRANCHLESS.md",
+        "runs/hd6970-poc/COPY_POOL_ORDERING.md",
+        "tests/local/r600",
+        "tests/local/check_flat_strided_copy.py",
+        "runs/hd6850-index-copy-revisit-20261101",
+        "runs/hd6850-index-copy-benchmark-20261101",
+        "runs/hd6970-minimal-v1-auto32-confirmation-20261102",
+        "docs/benchmarks/radeon-baseline-release-v1.json"
+      ]
+    },
+    {
+      "id": "FIX-01",
+      "topic": "homogeneous pointwise destination storage offsets",
+      "layer": "DLPrim src/core/pointwise.cpp",
+      "classification": "general reproduced correctness fix",
+      "discovery_hardware": "HD6970 investigation; defect is not asserted hardware-specific",
+      "status": "retain unconditionally, not a removable compatibility flag",
+      "evidence": [
+        "tests/local/check_pointwise_output_offsets.py",
+        "docs/r600-history.md"
+      ]
+    },
+    {
+      "id": "FIX-02",
+      "topic": "parallel top-k shared dynamic local storage",
+      "layer": "backend src/training_ops.cpp",
+      "classification": "reproduced runtime/compiler-sensitive local-storage workaround",
+      "discovery_hardware": "R9 270 Pitcairn",
+      "status": "retain V9 one-allocation layout; exact Mesa/compiler source cause not isolated",
+      "evidence": [
+        "docs/r9-topk-local-storage.md",
+        "tests/local/check_topk_local_storage.py",
+        "runs/hd5870-v9-regression-20261101",
+        "runs/hd6850-workaround-revisit-20261101"
+      ]
+    },
+    {
+      "id": "FIX-03",
+      "topic": "scalar promotion, repeat/view fallback, activation gradients",
+      "layer": "backend tensor/pointwise and related modules",
+      "classification": "backend correctness fixes",
+      "discovery_hardware": "R9 270 early Clover/Rusticl checks; per-defect provenance needs audit",
+      "status": "retain, do not revert with compatibility flags",
+      "evidence": [
+        "docs/changes-by-layer.md",
+        "tests/local/check_repeat_regression.py",
+        "tests/local/check_scalar_promotion.py",
+        "tests/local/check_activation_gradients.py"
+      ]
+    },
+    {
+      "id": "PERF-01",
+      "topic": "batched norms/SGD/EMA, fused SiLU and parallel top-k",
+      "layer": "backend foreach_norm/batch_pointwise/ema/pointwise/training_ops",
+      "classification": "performance features with bounded supported cases",
+      "discovery_hardware": "R9 270 early tuning and HD5870 parallel top-k development",
+      "status": "retain tested fast paths and fallbacks; publish native timing separately from profiles",
+      "evidence": [
+        "docs/changes-by-layer.md",
+        "docs/hd5870-topk.md",
+        "tests/local/check_batched_norms.py",
+        "tests/local/check_batched_sgd.py"
+      ]
+    },
+    {
+      "id": "PERF-02",
+      "topic": "filter-gradient partials, gather vectorization and depthwise scheduling",
+      "layer": "DLPrim core/conv.cpp and kernels",
+      "classification": "atomic-free performance algorithms plus reproduced odd-map correctness fix",
+      "discovery_hardware": "legacy development; HD5870 backward tuning documented",
+      "status": "retain validated parts; custom FILTER_SPLIT_K is separate from disabled ordinary split-K",
+      "evidence": [
+        "docs/hd5870-backward.md",
+        "tests/local/check_depthwise_filter_selection.py",
+        "tests/local/check_filter_split.py"
+      ]
+    },
+    {
+      "id": "DIAG-01",
+      "topic": "LLVM15Cayman clause-overflow defect in GPUrandomfill",
+      "layer": "LLVM r600 instruction-clause accounting/encoding",
+      "classification": "open correctness/dispatch investigation",
+      "discovery_hardware": "HD6970 Cayman",
+      "status": "StockCPUllcIR reproduces130slots/count129wrapped1; native32alsohangs. Userdeferscompilerfixupstream; topkregressionCPUinputchanged; GPU RNG remainsunsafe/unfixed.",
+      "evidence": [
+        "runs/hd6970-minimal-v1-packed-bn64-smalltiles-confirmation-20261102",
+        "runs/hd6970-isolated-dispatch-20261102",
+        "experiments/cayman-offline-audit-20261102/NEXT_BOOT_PLAN.json",
+        "docs/LLVM_CAYMAN_RNG_BUG.md"
+      ]
+    }
+  ]
+}

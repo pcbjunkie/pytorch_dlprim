@@ -1,0 +1,57 @@
+[
+  {
+    "step": 1,
+    "gpu_loss": 73.87777709960938,
+    "cpu_loss": 73.87777709960938,
+    "gpu_gradient_norm": 438.31831837927297,
+    "cpu_gradient_norm": 438.316842616346,
+    "gradient_cosine": 0.9999996059622838,
+    "max_gradient_error": 0.05340474843978882,
+    "max_error_parameter": "model.9.cv1.conv.weight",
+    "configuration": "hd6970-filter256-cpu-check-20261028"
+  },
+  {
+    "step": 2,
+    "gpu_loss": 98.57569885253906,
+    "cpu_loss": 98.57566833496094,
+    "gpu_gradient_norm": 364.31353154319737,
+    "cpu_gradient_norm": 364.34560865842883,
+    "gradient_cosine": 0.9999955569116292,
+    "max_gradient_error": 0.059849679470062256,
+    "max_error_parameter": "model.9.cv1.conv.weight",
+    "configuration": "hd6970-filter256-cpu-check-20261028"
+  },
+  {
+    "step": 3,
+    "gpu_loss": 73.99061584472656,
+    "cpu_loss": 73.99061584472656,
+    "gpu_gradient_norm": 295.81312011896637,
+    "cpu_gradient_norm": 295.8126088386859,
+    "gradient_cosine": 0.9999999947927802,
+    "max_gradient_error": 0.0036680102348327637,
+    "max_error_parameter": "model.9.cv1.conv.weight",
+    "configuration": "hd6970-filter256-cpu-check-20261028"
+  },
+  {
+    "step": 1,
+    "gpu_loss": 73.8777847290039,
+    "cpu_loss": 73.87777709960938,
+    "gpu_gradient_norm": 438.3157565643019,
+    "cpu_gradient_norm": 438.316842616346,
+    "gradient_cosine": 0.9999999998052388,
+    "max_gradient_error": 0.005519945174455643,
+    "max_error_parameter": "model.4.m.1.cv1.conv.weight",
+    "configuration": "hd6970-filter256-q32-cpu-check-20261028"
+  },
+  {
+    "step": 2,
+    "gpu_loss": 98.57604217529297,
+    "cpu_loss": 98.57601928710938,
+    "gpu_gradient_norm": 364.3476252422696,
+    "cpu_gradient_norm": 364.3473908951133,
+    "gradient_cosine": 0.9999997822906375,
+    "max_gradient_error": 0.03611377626657486,
+    "max_error_parameter": "model.9.cv1.conv.weight",
+    "configuration": "hd6970-filter256-q32-cpu-check-20261028"
+  }
+]

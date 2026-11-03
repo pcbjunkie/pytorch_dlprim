@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "cards": [
+    {
+      "card": "HD6850",
+      "shader_cores": 960,
+      "reference_max_clock_mhz": 775,
+      "source": "https://www.pugetsystems.com/parts/Video-Card/Asus-Radeon-HD-6850-1GB-7269/",
+      "theoretical_fp32_gflops": 1488.0,
+      "calculation": "shader cores \u00d7 clock GHz \u00d7 2 operations per MAD/FMA; reference clocks, not measured sustained throughput",
+      "measured_inference_fps": {
+        "device_resident_forward": 17.32374016120556,
+        "decoded_frame_to_detections": 15.516679582443382,
+        "encoded_image_to_detections": 14.387157893363598
+      },
+      "model_sha256": "1dc1745f101a8c453eefcfa4c53b30d82c172105ff9d8ea4c827481e99bed759",
+      "manifest_sha256": "066d1bc8284d4b6bf02ca82faf9ff081270e63a7f8d15ddd0d8e45b18d42c7e9",
+      "inference_profile": "automatic cap32 / queue64 / reserve128MiB"
+    },
+    {
+      "card": "HD5870",
+      "shader_cores": 1600,
+      "reference_max_clock_mhz": 850,
+      "source": "https://www.amd.com/content/dam/amd/en/documents/radeon-tech-docs/programmer-references/AMD_OpenCL_Programming_Optimization_Guide2.pdf",
+      "theoretical_fp32_gflops": 2720.0,
+      "calculation": "shader cores \u00d7 clock GHz \u00d7 2 operations per MAD/FMA; reference clocks, not measured sustained throughput",
+      "measured_inference_fps": {
+        "device_resident_forward": 18.1308746370453,
+        "decoded_frame_to_detections": 17.432404093324962,
+        "encoded_image_to_detections": 15.821369388363637
+      },
+      "model_sha256": "1dc1745f101a8c453eefcfa4c53b30d82c172105ff9d8ea4c827481e99bed759",
+      "manifest_sha256": "066d1bc8284d4b6bf02ca82faf9ff081270e63a7f8d15ddd0d8e45b18d42c7e9",
+      "inference_profile": "automatic cap32 / queue64 / reserve128MiB / per-kernel clFlush"
+    },
+    {
+      "card": "HD6970",
+      "shader_cores": 1536,
+      "reference_max_clock_mhz": 880,
+      "source": "https://www.pugetsystems.com/parts/Video-Card/Sapphire-Radeon-HD-6970-2GB-7386/",
+      "theoretical_fp32_gflops": 2703.36,
+      "calculation": "shader cores \u00d7 clock GHz \u00d7 2 operations per MAD/FMA; reference clocks, not measured sustained throughput",
+      "measured_inference_fps": null
+    },
+    {
+      "card": "R9 270",
+      "shader_cores": 1280,
+      "reference_max_clock_mhz": 925,
+      "source": "https://ir.amd.com/news-events/press-releases/detail/463/amd-radeon-r9-270-graphics-card-packs-a-1080p-gaming-punch",
+      "theoretical_fp32_gflops": 2368.0,
+      "calculation": "shader cores \u00d7 clock GHz \u00d7 2 operations per MAD/FMA; reference clocks, not measured sustained throughput",
+      "measured_inference_fps": null,
+      "source_note": "AMD launch release supplies1280shaders/925MHz but also prints inconsistent2.69TFLOPS; this record derives2368GFLOPS from the listed shader/clock inputs instead."
+    }
+  ],
+  "workload": "YOLOv8n five-class,256px FP32,batch1,fused/eval,20fixedrealimages; decoded pipeline includes preprocessing/transfers/NMS",
+  "limitations": [
+    "Reference peak arithmetic is not measured delivered throughput.",
+    "Only6850/5870 have this matched inference suite; training images/s is not substituted.",
+    "Card profiles differ (5870 uses extra submission flush); separateboots also changed CPU baseline timing."
+  ]
+}

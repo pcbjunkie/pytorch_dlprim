@@ -33,6 +33,12 @@ add_library(pt_ocl SHARED
         src/loss_ops.cpp
         src/random_ops.cpp
         src/norm_ops.cpp
+        src/scatter_ops.cpp
+        src/training_ops.cpp
+        src/index_ops.cpp
+        src/ema_ops.cpp
+        src/batch_pointwise_ops.cpp
+        src/foreach_norm_ops.cpp
         src/utils.cpp
         src/registeration.cpp
         src/CLTensor.cpp

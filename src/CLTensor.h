@@ -72,6 +72,8 @@ namespace ptdlprim {
         std::int64_t peak_requested_size = 0;
         std::int64_t requested_size = 0;
         std::int64_t cached_size = 0;
+        std::int64_t peak_reserved_size = 0;
+        std::map<std::string,int64_t> memory_stats(bool reset = false);
 
         bool reuse_oversized_chunks = getenv("OPENCL_CACHE_OVERSIZED") && atoi(getenv("OPENCL_CACHE_OVERSIZED"));
         bool debug_allocator = (getenv("OPENCL_DEBUG_CACHE") && atoi(getenv("OPENCL_DEBUG_CACHE")));
@@ -79,10 +81,12 @@ namespace ptdlprim {
         void clear();
         static std::uint64_t round(uint64_t v);
         std::unique_ptr<CLMemAllocation> allocate(int id,cl::Context &ctx,int64_t orig_size);
-        void release(std::unique_ptr<CLMemAllocation> &&mem);
+        void release(std::unique_ptr<CLMemAllocation> &&mem,bool retain = true,bool account_requested = true);
         void prepare(dlprim::Context &ctx);
     };
     
+
+    struct DeferredReleaseState;
 
     class CLContextManager {
     public: 
@@ -95,8 +99,14 @@ namespace ptdlprim {
         ~CLContextManager()
         {
             {
-                for(auto &data:data_)
+                for(size_t i=0;i<data_.size();++i) {
+                    auto &data=data_[i];
+                    if(data->ready) {
+                        data->queue.finish();
+                        drain_deferred(int(i),true);
+                    }
                     data->cache.clear();
+                }
             }
             no_cache_ = true;
         }
@@ -112,21 +122,9 @@ namespace ptdlprim {
         {
             return instance().data(id).queue;
         }
-        static std::unique_ptr<CLMemAllocation> alloc(int id,int64_t size)
-        {
-            auto &d = instance().data(id);
-            return d.cache.allocate(id,d.ctx.context(),size);
-        }
-        static void release(std::unique_ptr<CLMemAllocation> &&mem)
-        {
-            auto &inst = instance();
-            if(inst.no_cache_) {
-                mem.reset();
-                return;
-            }
-            auto &d = instance().data(mem->device_id);
-            d.cache.release(std::move(mem));
-        }
+        static std::unique_ptr<CLMemAllocation> alloc(int id,int64_t size);
+        static void release(std::unique_ptr<CLMemAllocation> &&mem);
+        static void drain_deferred(int index,bool wait = false);
         static at::DataPtr allocate(c10::Device const &dev,size_t n)
         {
             std::unique_ptr<CLMemAllocation> ptr=alloc(dev.index(),n);
@@ -134,13 +132,7 @@ namespace ptdlprim {
             return at::DataPtr(buffer,ptr.release(),&CLContextManager::free_ptr,dev);
         }
 
-        static void sync_if_needed(int index)
-        {
-            auto &inst = instance();
-            if(inst.no_cache_) {
-                inst.data(index).queue.finish();
-            }
-        }
+        static void sync_if_needed(int index);
 
         static void free_ptr(void *ctx)
         {
@@ -184,9 +176,11 @@ namespace ptdlprim {
             if(index < 0 || index >= int(data.size()) || !data[index] || !data[index]->ready)
                 return;
             getCommandQueue(index).finish();
+            drain_deferred(index,true);
             data[index]->cache.clear();
         }
         
+        static std::map<std::string,int64_t> memory_stats(int index,bool reset = false);
         static bool bad_fork()
         {
             instance();
@@ -205,6 +199,7 @@ namespace ptdlprim {
             dlprim::ExecutionContext queue;
             CLCache cache;
             std::shared_ptr<dlprim::TimingData> timing;
+            std::shared_ptr<DeferredReleaseState> deferred;
         };
 
 
@@ -257,6 +252,7 @@ namespace ptdlprim {
             }
         }
 
+        DeferredReleaseState &deferred(DevData &data);
         DevData &data(int i)
         {
             if(i < 0)

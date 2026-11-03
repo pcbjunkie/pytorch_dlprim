@@ -2,6 +2,7 @@
 #include "utils.h"
 #include <ATen/native/CPUFallback.h>
 #include <ATen/InferSize.h>
+#include <c10/core/impl/VirtualGuardImpl.h>
 
 #include <dlprim/core/util.hpp>
 #include <dlprim/core/pointwise.hpp>
@@ -27,7 +28,10 @@ using c10::DeviceType;
         // FIX ME Later -how to handle non Contiguous format {
         //TORCH_CHECK(!memory_format || *memory_format == MemoryFormat::Contiguous,"Contigonous format expected");
         // }
-        c10::Device dev = device ? *device : Device(OpenCLDeviceType,0);
+        c10::impl::VirtualGuardImpl guard(OpenCLDeviceType);
+        c10::Device dev = device ? *device : guard.getDevice();
+        if(!dev.has_index())
+            dev = guard.getDevice();
         c10::ScalarType st = dtype ? *dtype : c10::kFloat; 
         if(st == c10::kDouble && !CLContextManager::fp64(dev.index())) {
             st = c10::kFloat;
@@ -154,8 +158,19 @@ using c10::DeviceType;
             }
         }
         else if(self.device().type() == OpenCLDeviceType && dst.device().type() == OpenCLDeviceType) {
-            if(self.is_contiguous() && dst.is_contiguous()) {
-                dlprim::core::pointwise_operation_broadcast({todp(self)},{todp(dst)},{},"y0=x0;",getExecutionContext(self.device()));
+            const char *packed=std::getenv("DLPRIM_PACKED_BYTE_OUTPUTS");
+            bool byte_conversion=packed && std::string(packed)=="1" &&
+                self.scalar_type()!=dst.scalar_type() &&
+                (dst.scalar_type()==at::kBool || dst.scalar_type()==at::kChar || dst.scalar_type()==at::kByte);
+            if(byte_conversion && (!self.is_contiguous() || !dst.is_contiguous())) {
+                auto input=self.contiguous();
+                auto output=at::empty(dst.sizes(),dst.options());
+                output.copy_(input);
+                dst.copy_(output);
+            }
+            else if(self.is_contiguous() && dst.is_contiguous()) {
+                dlprim::core::pointwise_operation_broadcast({todp(self)},{todp(dst)},{},
+                    dst.scalar_type()==at::kBool ? "y0=(x0!=0);" : "y0=x0;",getExecutionContext(self.device()));
             }
             else {
                 auto src_sizes  = self.sizes();
@@ -181,6 +196,11 @@ using c10::DeviceType;
         }
         else {
             throw std::runtime_error("OpenCL supports copy to CPU backend only");
+        }
+        char const *sync_copy = std::getenv("OPENCL_SYNC_COPY");
+        if(sync_copy && std::atoi(sync_copy)) {
+            auto dev = self.device().type() == OpenCLDeviceType ? self.device() : dst.device();
+            getExecutionContext(dev).queue().finish();
         }
         return self;
     }
@@ -420,6 +440,29 @@ using c10::DeviceType;
     }
 
 
+    // Composite repeat uses unfold views. CPU fallback cannot preserve their
+    // aliasing, so writes can miss the destination. Concatenate device tensors
+    // instead; autograd retains PyTorch's existing repeat backward formula.
+    Tensor repeat(const Tensor &self, c10::IntArrayRef repeats)
+    {
+        GUARD;
+        TORCH_CHECK(repeats.size()>=size_t(self.dim()),"repeat dimensions cannot be fewer than input dimensions");
+        std::vector<int64_t> padded(repeats.size()-self.dim(),1);
+        padded.insert(padded.end(),self.sizes().begin(),self.sizes().end());
+        std::vector<int64_t> shape(padded.size());
+        bool empty=false;
+        for(size_t i=0;i<repeats.size();i++) {
+            TORCH_CHECK(repeats[i]>=0,"repeat counts must be nonnegative");
+            shape[i]=padded[i]*repeats[i];empty |= shape[i]==0;
+        }
+        if(empty)return at::empty(shape,self.options());
+        Tensor result=self.reshape(padded).clone();
+        for(size_t i=0;i<repeats.size();i++) {
+            if(repeats[i]>1)result=at::cat(std::vector<Tensor>(repeats[i],result),i);
+        }
+        return result;
+    }
+
     void fallback(const c10::OperatorHandle& op, torch::jit::Stack* stack)
     {
       TORCH_WARN("The operator '", op.schema().operator_name(), "' is not currently ",
@@ -431,6 +474,7 @@ using c10::DeviceType;
 } // namespace dtype
 
 TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
+      m.impl("aten::repeat",&ptdlprim::repeat);
       m.impl("aten::set_.source_Storage",&ptdlprim::set_source_storage);
       m.impl("aten::set_.source_Storage_storage_offset",&ptdlprim::set_source_storage_offset);
       m.impl("aten::empty.memory_format", &ptdlprim::allocate_empty);

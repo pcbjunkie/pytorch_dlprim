@@ -1,0 +1,4 @@
+CF[0] ALU address=8, encoded_count=13, encoded_slots=14, physical_span=14
+CF[2] ALU address=22, encoded_count=1, encoded_slots=2, physical_span=130
+CF[3] ALU address=152, encoded_count=119, encoded_slots=120, physical_span=120
+INVALID clause length

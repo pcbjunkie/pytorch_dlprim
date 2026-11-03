@@ -1,0 +1,7 @@
+{
+  "stock_cpu_repro_exit": 1,
+  "text_matches_cached_hanging_kernel": true,
+  "text_sha256": "b381e8b8b40964d435717ae4478009a1e677daeb344624789c1c36862c38f60c",
+  "repro_ll_sha256": "a63ba3071e5b125df79304ba0b6f8262b75b65e86db67630548bafca4a99ca04",
+  "no_gpu_access": true
+}
