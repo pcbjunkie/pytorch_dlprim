@@ -1,0 +1,153 @@
+{
+  "device": "AMD Cypress XT / Radeon HD 5870, 1 GiB",
+  "workload": "YOLO wildlife model, batch 20, 256 FP32, same checkpoint; q128, 64 MiB deferred-release budget, 768 MiB reserve",
+  "sampling": "500 Hz DRM Radeon GRBM_STATUS bit 31, host CLOCK_MONOTONIC aligned; whole-GPU busy indicator, not ALU occupancy",
+  "profiles": {
+    "V4 (per-kernel flush)": {
+      "profile_wall_seconds": 6.663161494,
+      "sampled_gpu_busy_percent": 53.39135654261705,
+      "host_api_busy_percent": {
+        "outside_traced_api": 43.262411347517734,
+        "flush": 49.91023339317774,
+        "kernel_enqueue": 44.21831637372803,
+        "marker": 47.82608695652174,
+        "blocking_api": 95.65217391304348,
+        "allocation_release": 14.84375,
+        "other_api": 0.0
+      },
+      "phase_busy_percent": {
+        "outside_labeled_phase": 0.0,
+        "preprocess_and_input_transfer": 28.57142857142857,
+        "network_forward": 84.11214953271028,
+        "detection_loss": 15.282791817087846,
+        "backward": 64.55621301775149,
+        "gradient_clipping": 57.333333333333336,
+        "sgd_update": 38.144329896907216,
+        "ema_update": 28.205128205128204,
+        "loss_logging_host_read": 100.0,
+        "scaler_update": 100.0
+      },
+      "backend_counter_deltas": {
+        "deferred.allocations": 6457,
+        "queue.finish_calls": 44,
+        "queue.flushes": 2370,
+        "queue.host_wait_ns": 1115019643,
+        "queue.marker_batches": 2370,
+        "queue.sync_calls": 3324,
+        "queue.throttles": 44
+      },
+      "longest_sampled_idle_intervals": [
+        {
+          "start_relative_ms": 386.169663,
+          "duration_ms": 185.975144,
+          "host_category": "flush",
+          "phase": "detection_loss"
+        },
+        {
+          "start_relative_ms": 960.173899,
+          "duration_ms": 115.981121,
+          "host_category": "flush",
+          "phase": "backward"
+        },
+        {
+          "start_relative_ms": 1166.17059,
+          "duration_ms": 101.963175,
+          "host_category": "flush",
+          "phase": "backward"
+        },
+        {
+          "start_relative_ms": 5366.170586,
+          "duration_ms": 100.000736,
+          "host_category": "kernel_enqueue",
+          "phase": "backward"
+        },
+        {
+          "start_relative_ms": 742.170487,
+          "duration_ms": 91.972865,
+          "host_category": "kernel_enqueue",
+          "phase": "detection_loss"
+        }
+      ]
+    },
+    "V5 (deferred marker flush)": {
+      "profile_wall_seconds": 6.683479955,
+      "sampled_gpu_busy_percent": 52.842609216038305,
+      "host_api_busy_percent": {
+        "outside_traced_api": 44.64902186421173,
+        "blocking_api": 93.65079365079364,
+        "kernel_enqueue": 40.84003574620196,
+        "flush": 47.556390977443606,
+        "allocation_release": 30.612244897959183,
+        "marker": 58.75,
+        "other_api": 7.142857142857142
+      },
+      "phase_busy_percent": {
+        "outside_labeled_phase": 7.142857142857142,
+        "preprocess_and_input_transfer": 50.0,
+        "network_forward": 80.03565062388593,
+        "detection_loss": 15.039281705948374,
+        "backward": 67.26485148514851,
+        "gradient_clipping": 37.3134328358209,
+        "sgd_update": 39.0,
+        "ema_update": 25.64102564102564,
+        "loss_logging_host_read": 100.0,
+        "gradient_unscale": 0.0,
+        "zero_grad": 100.0
+      },
+      "backend_counter_deltas": {
+        "deferred.allocations": 6457,
+        "queue.finish_calls": 49,
+        "queue.flushes": 4,
+        "queue.host_wait_ns": 1126535050,
+        "queue.marker_batches": 2377,
+        "queue.marker_flushes_avoided": 2377,
+        "queue.sync_calls": 3324,
+        "queue.throttles": 49
+      },
+      "longest_sampled_idle_intervals": [
+        {
+          "start_relative_ms": 4832.236124,
+          "duration_ms": 142.000815,
+          "host_category": "marker",
+          "phase": "detection_loss"
+        },
+        {
+          "start_relative_ms": 3314.232386,
+          "duration_ms": 128.003444,
+          "host_category": "outside_traced_api",
+          "phase": "backward"
+        },
+        {
+          "start_relative_ms": 1090.236336,
+          "duration_ms": 121.995942,
+          "host_category": "kernel_enqueue",
+          "phase": "backward"
+        },
+        {
+          "start_relative_ms": 5430.237087,
+          "duration_ms": 113.995281,
+          "host_category": "outside_traced_api",
+          "phase": "backward"
+        },
+        {
+          "start_relative_ms": 3210.236173,
+          "duration_ms": 99.99685,
+          "host_category": "outside_traced_api",
+          "phase": "backward"
+        }
+      ]
+    }
+  },
+  "native_matched_rates_ips": {
+    "submit-v4-a": 11.350848557844843,
+    "submit-v5": 11.195399472367653,
+    "submit-v4-b": 11.257587398429603
+  },
+  "v5_inference_correctness_passed": true,
+  "v5_inference_checks": 800,
+  "v5_inference_fps": {
+    "device_resident_forward": 18.671749708927468,
+    "decoded_frame_to_detections": 17.31925585491972,
+    "encoded_image_to_detections": 16.021200965469355
+  }
+}

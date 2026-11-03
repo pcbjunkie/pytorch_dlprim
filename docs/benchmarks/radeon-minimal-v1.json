@@ -1,0 +1,388 @@
+{
+  "name": "minimal-v1",
+  "date": "2026-11-03",
+  "status": "All five GPU models passed current-candidate short confirmation and 20 added epochs; documentation/source review and new release branch/push pending",
+  "backend_snapshot": "topk-local-storage-v9-20261030",
+  "backend_sha256": "5b25148c3f1d093a9f8b21ec8207e9fb5910cb9cf5e1f7cd02515310a8a46ed9",
+  "legacy": {
+    "profile": "minimal-v1",
+    "automatic_cap": 128,
+    "bn_cap": 128,
+    "index_cap": 128,
+    "flat_rank3_copy": false,
+    "packed_byte_outputs": false,
+    "small_gemm_tiles": false,
+    "copy_cache_flush": false,
+    "per_kernel_flush": true,
+    "conv_gather": true,
+    "pool_gather": true,
+    "winograd": false,
+    "ordinary_split_k": false,
+    "custom_filter_split": true,
+    "queue_limit": 128,
+    "retirement_mib": 64,
+    "allocator_cache": false,
+    "deferred_release": true
+  },
+  "gcn": {
+    "profile": "ordinary allocation, no legacy flags or launch shims",
+    "queue_limit": 128,
+    "retirement_mib": 64,
+    "allocator_cache": false,
+    "deferred_release": true
+  },
+  "cards": {
+    "hd5870": {
+      "proposed_batch": 24,
+      "reserve_mib": 960,
+      "confirmation": "passed short confirmation with small GEMM tiles",
+      "sustained_validation": {
+        "state": "passed",
+        "completed_added_epochs": 20,
+        "epochs": [
+          41,
+          60
+        ],
+        "training_images_per_second": 13.024414417440491,
+        "elapsed_seconds": 10637.81572341919,
+        "batch": 24,
+        "reserve_mib": 960,
+        "new_kernel_bytes": 0,
+        "checkpoint_reloaded_and_validated": true,
+        "run": "/home/max/opencl-pose/runs/hd5870-minimal-v1-stability20-20261102"
+      },
+      "profile": "cypress-minimal-v1",
+      "effective_settings": {
+        "automatic_cap": 128,
+        "bn_cap": 128,
+        "index_cap": 128,
+        "packed_byte_outputs": false,
+        "small_gemm_tiles": true,
+        "flat_rank3_copy": false,
+        "copy_cache_flush": false,
+        "per_kernel_flush": true
+      },
+      "confirmation_artifacts": "runs/hd5870-minimal-v1-smalltiles-confirmation-20261102",
+      "training_images_per_second": [
+        12.986851131660693,
+        13.247641757826313
+      ],
+      "training_mean_images_per_second": 13.117246444743504,
+      "peak_reserved_bytes": 886266952,
+      "inference": {
+        "device_resident_forward": {
+          "mean_ms": 53.024193679982545,
+          "p95_ms": 53.05063609998797,
+          "frames_per_second": 18.85931554254856
+        },
+        "decoded_frame_to_detections": {
+          "mean_ms": 57.45880455998986,
+          "p95_ms": 60.94590995010091,
+          "frames_per_second": 17.403773149438745
+        },
+        "encoded_image_to_detections": {
+          "mean_ms": 66.1967709599844,
+          "p95_ms": 74.94512264997866,
+          "frames_per_second": 15.106477030495864
+        }
+      },
+      "new_kernel_bytes": 0,
+      "whole_card_monitor": {
+        "vram_peak_mib": 1012.37,
+        "gtt_peak_mib": 998.31,
+        "scope": "entire confirmation, not just native timedwindows; peaks may be atdifferent times"
+      }
+    },
+    "hd6850": {
+      "proposed_batch": 24,
+      "reserve_mib": 960,
+      "confirmation": "passed consolidated11suites/modelCPU2/inference800",
+      "sustained_validation": {
+        "state": "passed",
+        "board": "ASUS EAH6850",
+        "completed_added_epochs": 20,
+        "epochs": [
+          41,
+          60
+        ],
+        "training_images_per_second": 8.826390867217567,
+        "elapsed_seconds": 15366.921239852905,
+        "batch": 24,
+        "reserve_mib": 960,
+        "new_kernel_bytes": 0,
+        "checkpoint_reloaded_and_validated": true,
+        "run": "/home/max/opencl-pose/runs/hd6850-asus-minimal-v1-stability20-20261102"
+      },
+      "confirmation_artifacts": "runs/hd6850-minimal-v1-consolidation-20261101",
+      "kernel_placement_warnings": 2,
+      "gpu_reset_or_stall_captured": false,
+      "inference": {
+        "device_resident_forward": {
+          "mean_ms": 69.70306921990414,
+          "p95_ms": 94.48739785148064,
+          "frames_per_second": 14.346570548351748
+        },
+        "decoded_frame_to_detections": {
+          "mean_ms": 75.55535938983667,
+          "p95_ms": 95.47619384647987,
+          "frames_per_second": 13.235328480675788
+        },
+        "encoded_image_to_detections": {
+          "mean_ms": 82.11191479036643,
+          "p95_ms": 101.99048965114342,
+          "frames_per_second": 12.1785005568683
+        }
+      },
+      "performance_note": "Decoded13.235FPS vs historical15.552FPS conservative control; unmatched differentconfiguration result needs followup, not selected fastest inference profile",
+      "asus_board_confirmation": {
+        "state": "complete",
+        "profile": "minimal-v1",
+        "batch": 24,
+        "reserve_mib": 960,
+        "legacy_overrides": true,
+        "model_cpu_updates": 2,
+        "inference_comparisons": 800,
+        "training_results": [
+          {
+            "batch": 24,
+            "measured_steps": 64,
+            "images_per_second": 8.757493696559868,
+            "peak_reserved_bytes": 893183048
+          },
+          {
+            "batch": 24,
+            "measured_steps": 64,
+            "images_per_second": 8.799248733722369,
+            "peak_reserved_bytes": 893183048
+          }
+        ],
+        "inference": {
+          "device_resident_forward": {
+            "mean_ms": 61.05806514001188,
+            "p95_ms": 60.80455089992256,
+            "frames_per_second": 16.377852748967825
+          },
+          "decoded_frame_to_detections": {
+            "mean_ms": 67.88287372999548,
+            "p95_ms": 70.3534322998621,
+            "frames_per_second": 14.731256133579521
+          },
+          "encoded_image_to_detections": {
+            "mean_ms": 74.8526095100101,
+            "p95_ms": 91.50936375007177,
+            "frames_per_second": 13.359587682327483
+          }
+        },
+        "qualification": "ASUS Barts board comparison; minimal-v1 reserve960; sustained pending",
+        "new_kernel_bytes": 0
+      },
+      "board_comparison": {
+        "previous_short_training": 8.626,
+        "current_short_training": 8.778371215141117,
+        "ratio": 1.0176641798215995,
+        "threshold_fraction": 0.15,
+        "qualification": "short timing comparison; inference independently variable"
+      },
+      "asus_board": "ASUS EAH6850 / 1043:03b4",
+      "board_grouping": "single HD6850 entry; training within 1.8%; inference varies between runs; raw board evidence retained"
+    },
+    "hd6970": {
+      "proposed_batch": 28,
+      "reserve_mib": 1008,
+      "confirmation": "passed shortconfirmation withCayman exceptions; finalsustainedpending",
+      "sustained_validation": {
+        "state": "passed",
+        "completed_added_epochs": 20,
+        "epochs": [
+          41,
+          60
+        ],
+        "training_images_per_second": 14.296634096482427,
+        "elapsed_seconds": 9860.5595870018,
+        "batch": 28,
+        "reserve_mib": 1008,
+        "new_kernel_bytes": 0,
+        "checkpoint_reloaded_and_validated": true,
+        "run": "/home/max/opencl-pose/runs/hd6970-minimal-v1-stability20-20261102"
+      },
+      "required_exception_under_test": null,
+      "profile": "cayman-minimal-v1",
+      "effective_settings": {
+        "automatic_cap": 32,
+        "bn_cap": 64,
+        "packed_byte_outputs": true,
+        "small_gemm_tiles": true,
+        "index_cap": 128,
+        "flat_rank3_copy": false,
+        "copy_cache_flush": false,
+        "per_kernel_flush": true
+      },
+      "confirmation_artifacts": "runs/hd6970-minimal-v1-auto32-confirmation-20261102",
+      "training_images_per_second": [
+        14.245510637164953,
+        14.200083533753697
+      ],
+      "training_mean_images_per_second": 14.222797085459325,
+      "peak_reserved_bytes": 1027617352,
+      "inference": {
+        "device_resident_forward": {
+          "mean_ms": 59.17468123003346,
+          "p95_ms": 61.296936950043346,
+          "frames_per_second": 16.8991193397838
+        },
+        "decoded_frame_to_detections": {
+          "mean_ms": 65.45565253001314,
+          "p95_ms": 65.78562620015873,
+          "frames_per_second": 15.277519379116628
+        },
+        "encoded_image_to_detections": {
+          "mean_ms": 72.61905018999187,
+          "p95_ms": 81.4472643499812,
+          "frames_per_second": 13.770491315759688
+        }
+      },
+      "new_kernel_bytes": 0,
+      "gpu_rng": "knownLLVM15defect, notfixed; testinputsCPUgenerated"
+    },
+    "r9-270": {
+      "proposed_batch": 48,
+      "reserve_mib": null,
+      "confirmation": "passed",
+      "sustained_validation": {
+        "state": "passed",
+        "completed_added_epochs": 20,
+        "epochs": [
+          41,
+          60
+        ],
+        "training_images_per_second": 14.98198829964844,
+        "elapsed_seconds": 8639.220784187317,
+        "batch": 48,
+        "reserve_mib": null,
+        "new_kernel_bytes": 0,
+        "checkpoint_reloaded_and_validated": true,
+        "run": "/home/max/opencl-pose/runs/r9-270-minimal-v1-stability20-20261102"
+      },
+      "confirmation_artifacts": "runs/r9-270-minimal-v1-confirmation-20261102",
+      "short_confirmation": {
+        "state": "complete",
+        "profile": "minimal-v1",
+        "batch": 48,
+        "reserve_mib": null,
+        "legacy_overrides": false,
+        "model_cpu_updates": 2,
+        "inference_comparisons": 800,
+        "training_results": [
+          {
+            "batch": 48,
+            "measured_steps": 64,
+            "images_per_second": 15.172526284980517,
+            "peak_reserved_bytes": 1733752360
+          },
+          {
+            "batch": 48,
+            "measured_steps": 64,
+            "images_per_second": 14.923190779579658,
+            "peak_reserved_bytes": 1732720168
+          }
+        ],
+        "inference": {
+          "device_resident_forward": {
+            "mean_ms": 86.462990969992,
+            "p95_ms": 112.89224459983416,
+            "frames_per_second": 11.56564200221875
+          },
+          "decoded_frame_to_detections": {
+            "mean_ms": 91.01493588001176,
+            "p95_ms": 118.9764056500735,
+            "frames_per_second": 10.987207652580624
+          },
+          "encoded_image_to_detections": {
+            "mean_ms": 72.95698042000367,
+            "p95_ms": 87.20609839997451,
+            "frames_per_second": 13.706707627469399
+          }
+        },
+        "qualification": "GCN ordinary allocation with deferred retirement; short confirmation; sustained run pending",
+        "new_kernel_bytes": 0
+      }
+    },
+    "hd7970": {
+      "proposed_batch": 80,
+      "reserve_mib": null,
+      "confirmation": "passed",
+      "sustained_validation": {
+        "state": "passed",
+        "completed_added_epochs": 20,
+        "epochs": [
+          41,
+          60
+        ],
+        "training_images_per_second": 20.613148072649174,
+        "elapsed_seconds": 6334.5677399635315,
+        "batch": 80,
+        "reserve_mib": null,
+        "new_kernel_bytes": 0,
+        "checkpoint_reloaded_and_validated": true,
+        "validated_checkpoint": "weights/last.pt",
+        "run": "/home/max/opencl-pose/runs/hd7970-minimal-v1-stability20-20261102"
+      },
+      "confirmation_artifacts": "runs/hd7970-minimal-v1-confirmation-20261102",
+      "short_confirmation": {
+        "state": "complete",
+        "profile": "minimal-v1",
+        "batch": 80,
+        "reserve_mib": null,
+        "legacy_overrides": false,
+        "model_cpu_updates": 2,
+        "inference_comparisons": 800,
+        "training_results": [
+          {
+            "batch": 80,
+            "measured_steps": 64,
+            "images_per_second": 20.941846590428213,
+            "peak_reserved_bytes": 2818074172
+          },
+          {
+            "batch": 80,
+            "measured_steps": 64,
+            "images_per_second": 20.677592757606433,
+            "peak_reserved_bytes": 2818074172
+          }
+        ],
+        "inference": {
+          "device_resident_forward": {
+            "mean_ms": 110.83648466000795,
+            "p95_ms": 111.98296669998626,
+            "frames_per_second": 9.022299859721375
+          },
+          "decoded_frame_to_detections": {
+            "mean_ms": 68.6830056000008,
+            "p95_ms": 117.9351372500605,
+            "frames_per_second": 14.559642392819054
+          },
+          "encoded_image_to_detections": {
+            "mean_ms": 70.47343707001119,
+            "p95_ms": 85.1056486500738,
+            "frames_per_second": 14.189743562621462
+          }
+        },
+        "qualification": "GCN ordinary allocation with deferred retirement; short confirmation; sustained run pending",
+        "new_kernel_bytes": 0
+      }
+    }
+  },
+  "note": "Per-card results distinguish current candidate confirmations from inherited proposed batch sizes. No branch/push until all release gates pass.",
+  "confirmation_order": [
+    "hd6850",
+    "hd6970",
+    "hd5870",
+    "r9-270",
+    "hd7970"
+  ],
+  "release_gates": [
+    "all cards short confirmation",
+    "all cards sustained validation",
+    "create new branch and push"
+  ]
+}

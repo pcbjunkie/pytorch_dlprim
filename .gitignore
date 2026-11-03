@@ -1,0 +1,15 @@
+# Local development artifacts
+/build*/
+/.venv/
+/venv/
+__pycache__/
+*.py[cod]
+*.so
+*.o
+*.log
+.env
+.env.*
+/runs/
+/examples/runs/
+/mesa-r600/
+/runtime-r600/

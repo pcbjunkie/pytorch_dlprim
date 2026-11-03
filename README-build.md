@@ -1,5 +1,9 @@
 ## In the nutshell
 
+For this fork's experimental legacy Radeon Clover path, first read
+[the r600 guide](docs/r600-clover.md): it needs the recorded DLPrimitives/Mesa
+patches and an explicit profile. The generic upstream build instructions follow.
+
 - Setup pip virtual enviromnet with _CPU_ version of pytorch. Supported pytorch version are 2.4 and above. Also pytorch 1.13 is supprted.
 - Build dlprim\_backend and install at location you want
 - import `pytorch_ocl` and use `ocl` device instead of `cuda`

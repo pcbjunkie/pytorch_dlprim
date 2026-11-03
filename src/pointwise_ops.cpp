@@ -1,5 +1,8 @@
 #include <torch/torch.h>
 #include <ATen/ATen.h>
+#include <ATen/ops/silu_backward_compositeimplicitautograd_dispatch.h>
+#include <cstdlib>
+#include <cstring>
 #include "CLTensor.h"
 #include "utils.h"
 
@@ -141,9 +144,18 @@ using c10::DeviceType;
             Tensor self_c = self.contiguous();
             dlprim::Tensor x0=todp(self_c);
             float w0 = alpha.toDouble() * value;
-            dlprim::core::pointwise_operation({x0},{y0},{w0},
-                                      "y0 = x0 + w0;",
-                                      getExecutionContext(self));
+            if(x0.dtype() == y0.dtype()) {
+                dlprim::core::pointwise_operation({x0},{y0},{w0},
+                                          "y0 = x0 + w0;",
+                                          getExecutionContext(self));
+            }
+            else {
+                // TensorIterator may promote an integer tensor plus a
+                // floating scalar to floating output (e.g. pose mask counts).
+                dlprim::core::pointwise_operation_broadcast({x0},{y0},{w0},{y0.dtype()},
+                                          "y0 = x0 + w0;",
+                                          getExecutionContext(self));
+            }
         }
         else if(isCPUScalar(self,value)) {
             dev_to_sync = other.device();
@@ -151,9 +163,16 @@ using c10::DeviceType;
             dlprim::Tensor x0=todp(other_c);
             float w0 = value;
             float w1 = alpha.toDouble();
-            dlprim::core::pointwise_operation({x0},{y0},{w0,w1},
-                                      "y0 = w0 + x0 * w1;",
-                                      getExecutionContext(other));
+            if(x0.dtype() == y0.dtype()) {
+                dlprim::core::pointwise_operation({x0},{y0},{w0,w1},
+                                          "y0 = w0 + x0 * w1;",
+                                          getExecutionContext(other));
+            }
+            else {
+                dlprim::core::pointwise_operation_broadcast({x0},{y0},{w0,w1},{y0.dtype(),y0.dtype()},
+                                          "y0 = w0 + x0 * w1;",
+                                          getExecutionContext(other));
+            }
         }
         else {
             Tensor self_c = self.contiguous();
@@ -174,6 +193,7 @@ using c10::DeviceType;
     Tensor &unitary_op(const Tensor &self,Tensor &out,std::string const &op)
     {
         GUARD;
+        if(out.numel()==0)return out;
         Tensor self_c = self.contiguous(), out_c = out.contiguous();
         
         dlprim::Tensor x=todp(self_c);
@@ -236,6 +256,7 @@ using c10::DeviceType;
     Tensor & comp_out(const Tensor & self, const Scalar & other, Tensor & out,std::string const &op)
     {
         GUARD;
+        if(out.numel()==0)return out;
         Tensor self_c = self.contiguous(), out_c = out.contiguous();
         
         dlprim::Tensor x0=todp(self_c);
@@ -365,6 +386,7 @@ using c10::DeviceType;
     Tensor & binary_op_out_tensor(const Tensor & self, const Tensor & other, Tensor & out,std::string const &op,std::string op_builder="")
     {
         GUARD;
+        if(out.numel()==0)return out;
         Tensor self_c  = self.contiguous(), out_c = out.contiguous(),
                other_c = other.contiguous();
         
@@ -533,6 +555,80 @@ using c10::DeviceType;
     }
 
 
+
+    Tensor & vector_norm_out(const Tensor &self, const Scalar &ord,
+            OptionalIntArrayRef dim, bool keepdim, c10::optional<ScalarType> dtype, Tensor &out)
+    {
+        GUARD;
+        double p = ord.toDouble();
+        // Preserve semantics outside the FP32 training path. Empty reductions
+        // also need PyTorch's identity/error handling for negative orders.
+        if(self.scalar_type()!=at::kFloat || out.scalar_type()!=at::kFloat || self.numel()==0) {
+            auto cpu = at::linalg_vector_norm(self.cpu(),ord,dim,keepdim,dtype);
+            out.resize_(cpu.sizes()); out.copy_(cpu); return out;
+        }
+        Tensor input=self.contiguous();
+        auto X=todp(input);
+        auto shapes=squeeze_dim(X.shape(),dim,keepdim);
+        Tensor output=out.contiguous();
+        auto Y=todp(output); Y.reshape(shapes.first);
+        std::string map, init="reduce_y0 = 0;", reduce="reduce_y0 += y0;", finish;
+        if(p==0) map="y0 = x0 != 0;";
+        else if(p==1) map="y0 = fabs(x0);";
+        else if(p==2) { map="y0 = x0*x0;"; finish="y0 = sqrt(x0);"; }
+        else if(std::isinf(p)) {
+            map="y0 = fabs(x0);";
+            init = p>0 ? "reduce_y0 = 0;" : "reduce_y0 = INFINITY;";
+            reduce = std::string("reduce_y0 = (isnan(y0) || isnan(reduce_y0)) ? NAN : ") +
+                     (p>0 ? "fmax" : "fmin") + "(reduce_y0,y0);";
+        }
+        else {
+            map="y0 = pow(fabs(x0),w0);";
+            finish="y0 = pow(x0,w0);";
+        }
+        auto q=getExecutionContext(self); dlprim::Context ctx(q);
+        auto op=dlprim::core::PointwiseOperationBroadcastReduce::create(
+                ctx,{X.specs()},{Y.specs()},1,dlprim::float_data,map,init,reduce);
+        WSGuard ws(op->workspace(),self.device());
+        op->enqueue({X},{Y},ws.ws,{p},{1},{0},q);
+        if(!finish.empty())
+            dlprim::core::pointwise_operation({Y},{Y},{1.0/p},finish,q);
+        if(!out.is_contiguous()) out.copy_(output);
+        sync_if_needed(self.device());
+        return out;
+    }
+
+    Tensor where_self(const Tensor &condition,const Tensor &self,const Tensor &other)
+    {
+        GUARD;
+        auto shape=at::infer_size(self.sizes(),other.sizes());
+        shape=at::infer_size(shape,condition.sizes());
+        auto dtype=at::result_type(self,other);
+        auto dev=condition.device();
+        auto a=self.to(dev,dtype).contiguous(), b=other.to(dev,dtype).contiguous();
+        auto c=condition.contiguous();
+        TORCH_CHECK(condition.scalar_type()==at::kBool,"where condition must be bool");
+        auto out=at::empty(shape,a.options());
+        if(out.numel()) dlprim::core::pointwise_operation_broadcast(
+            {todp(c),todp(a),todp(b)},{todp(out)},{},"y0 = x0 ? x1 : x2;",getExecutionContext(out));
+        sync_if_needed(dev); return out;
+    }
+
+    Tensor & masked_fill_scalar_(Tensor &self,const Tensor &mask,const Scalar &value)
+    {
+        GUARD;
+        TORCH_CHECK(mask.scalar_type()==at::kBool,"masked_fill requires boolean mask");
+        auto shape=at::infer_size(self.sizes(),mask.sizes());
+        TORCH_CHECK(at::IntArrayRef(shape)==self.sizes(),"mask cannot expand destination");
+        auto output=self.contiguous(), m=mask.contiguous();
+        auto y=todp(output);
+        if(self.numel()) dlprim::core::pointwise_operation_broadcast(
+            {y,todp(m)},{y},{value.toDouble()},{y.dtype()},
+            "y0 = x1 ? w0 : x0;",getExecutionContext(self));
+        if(!self.is_contiguous()) self.copy_(output);
+        sync_if_needed(self.device()); return self;
+    }
+
     // {"schema": "aten::mean.out(Tensor self, int[1]? dim, bool keepdim=False, *, ScalarType? dtype=None, Tensor(a!) out) -> Tensor(a!)", "dispatch": "True", "default": "False"}
     Tensor & mean_out(const Tensor & self, OptionalIntArrayRef dim, bool keepdim, c10::optional<ScalarType> dtype, Tensor & out)
     {
@@ -696,13 +792,14 @@ using c10::DeviceType;
     {
         GUARD;
         Tensor self_c = self.contiguous();
+        Tensor grad_output_c = grad_output.contiguous();
         dlprim::Tensor X  = todp(self_c);
-        dlprim::Tensor dY = todp(grad_output);
+        dlprim::Tensor dY = todp(grad_output_c);
         Tensor result = new_tensor_as(X.shape(),self);
         dlprim::Tensor dX = todp(result);
         double w0 = min_val.toDouble();
         double w1 = max_val.toDouble();
-        dlprim::core::pointwise_operation({X,dY},{dX},{w0,w1},"y0 = (w0 <= x0 && x0 <= w1) ? x1 : 0;",getExecutionContext(self));
+        dlprim::core::pointwise_operation({X,dY},{dX},{w0,w1},"y0 = (w0 < x0 && x0 < w1) ? x1 : 0;",getExecutionContext(self));
         sync_if_needed(self.device());
         return result;
     }
@@ -1030,7 +1127,7 @@ using c10::DeviceType;
                
         dlprim::Tensor x=todp(self_c);
         dlprim::Tensor dy=todp(grad_output_c);
-        dlprim::Tensor dx=todp(grad_input);
+        dlprim::Tensor dx=todp(grad_input_c);
         dlprim::core::pointwise_operation({x,dy},{dx},{},
             R"xxx(
                 y0 = 1.0f / (1.0f + exp(-x0));
@@ -1043,6 +1140,20 @@ using c10::DeviceType;
         
         sync_if_needed(self.device());
         return grad_input;
+    }
+
+    Tensor silu_backward(const Tensor &grad_output,const Tensor &self)
+    {
+        GUARD;
+        char const *enabled=std::getenv("DLPRIM_FUSED_SILU_BACKWARD");
+        if(!enabled || std::strcmp(enabled,"1")!=0 ||
+           self.scalar_type()!=at::kFloat || grad_output.scalar_type()!=at::kFloat ||
+           self.device()!=grad_output.device() || self.sizes()!=grad_output.sizes() ||
+           (at::GradMode::is_enabled() && (self.requires_grad() || grad_output.requires_grad())))
+            return at::compositeimplicitautograd::silu_backward(grad_output,self);
+        Tensor result=new_ocl_tensor(self.sizes(),self.device(),self.scalar_type());
+        if(self.numel())silu_backward_out(grad_output,self,result);
+        return result;
     }
 
     // {"schema": "aten::tanh(Tensor self) -> Tensor", "dispatch": "True", "default": "True"}
@@ -1286,6 +1397,7 @@ using c10::DeviceType;
     Tensor & ne_out(const Tensor & self, const Scalar & other, Tensor & out)
     {
         GUARD;
+        if(out.numel()==0)return out;
         Tensor self_c = self.contiguous(), out_c = out.contiguous();
         
         dlprim::Tensor x(todp(self_c));
@@ -1332,6 +1444,7 @@ using c10::DeviceType;
     Tensor & eq_out(const Tensor & self, const Scalar & other, Tensor & out)
     {
         GUARD;
+        if(out.numel()==0)return out;
         Tensor self_c = self.contiguous(), out_c = out.contiguous();
         
         dlprim::Tensor x(todp(self_c));
@@ -1661,6 +1774,9 @@ using c10::DeviceType;
 } // namespace
 
 TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
+      m.impl("aten::linalg_vector_norm.out",&ptdlprim::vector_norm_out);
+      m.impl("aten::where.self",&ptdlprim::where_self);
+      m.impl("aten::masked_fill_.Scalar",&ptdlprim::masked_fill_scalar_);
       m.impl("aten::relu_",&ptdlprim::relu_);
       m.impl("aten::mul.out",&ptdlprim::mul_out);
       m.impl("aten::mul_.Scalar",&ptdlprim::mul_scalar_);
@@ -1697,6 +1813,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
       m.impl("aten::tanh_backward.grad_input",&ptdlprim::tanh_backward_out);
       m.impl("aten::silu.out",&ptdlprim::silu_out);
       m.impl("aten::silu_backward.grad_input",&ptdlprim::silu_backward_out);
+      m.impl("aten::silu_backward",&ptdlprim::silu_backward);
       m.impl("aten::tanh",&ptdlprim::tanh);
       m.impl("aten::tanh_",&ptdlprim::tanh_);
       m.impl("aten::leaky_relu.out",&ptdlprim::leaky_relu_out);
@@ -1757,6 +1874,7 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
 }
 
 TORCH_LIBRARY_IMPL(aten, AutogradPrivateUse1, m) {
+      m.impl("aten::silu_backward",&ptdlprim::silu_backward);
       m.impl("aten::relu",&ptdlprim::act_autograd<dlprim::StandardActivations::relu>);
 }
 

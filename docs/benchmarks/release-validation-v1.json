@@ -1,0 +1,41 @@
+{
+  "base": "3fb233e6e83ee6c793fdc6bc58ef71995eced7a4",
+  "files": [
+    "src/core/bn.cpp",
+    "src/core/conv.cpp",
+    "src/core/interpolate.cpp",
+    "src/core/pointwise.cpp",
+    "src/core/pool.cpp",
+    "src/core/util.cpp",
+    "src/gemm.cpp",
+    "src/kernels/conv_input_gather.cl",
+    "src/kernels/copy_strided.cl",
+    "src/kernels/depthwise_separable_bw_filter.cl",
+    "src/kernels/depthwise_separable_conv.cl",
+    "src/kernels/filter_split_reduce.cl",
+    "src/kernels/interpolate_2d.cl",
+    "src/kernels/pack_byte_output.cl",
+    "src/kernels/pooling.cl",
+    "src/kernels/sgemm.cl",
+    "src/program_cache.cpp"
+  ],
+  "sha256": "a1a6e5897aea89efa0dbe8af63bc1db7a660695c42ebd9c592ca7ebdc8bafe54",
+  "clean_apply_and_exact_source_match": true,
+  "date": "2026-11-03",
+  "integration_commit": "365c1d3f7204d02687637780b8e46ee6d441b851",
+  "backend_build": "cmake --build build-dlprim --target pt_ocl -j2: passed",
+  "backend_import": "rebuilt extension imported under Torch2.4.1+cpu without requesting GPU enumeration",
+  "python_syntax_files": 40,
+  "json_syntax_files": 18,
+  "shell_syntax": "all tools/*.sh passed bash -n",
+  "launcher_host_checks": "Cypress/Barts/Cayman settings and GCN isolation passed",
+  "host_shim_builds": [
+    "r600_auto_workgroups",
+    "r600_flush_after_kernel",
+    "opencl_host_trace"
+  ],
+  "mesa_patch": "clean application matched2files of pinned Mesa fork",
+  "frozen_v9_sha256": "5b25148c3f1d093a9f8b21ec8207e9fb5910cb9cf5e1f7cd02515310a8a46ed9",
+  "hardware_validation": "all five models passed frozenV9 shortchecks and20addedepochs; upstreamemptycat mergebuild/import checked only",
+  "scope": "source, tests, docs and reproducible patches; no binary/model/dataset/CUDA/Squirltool changes"
+}

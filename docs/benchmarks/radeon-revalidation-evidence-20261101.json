@@ -1,0 +1,2231 @@
+{
+  "captured": "2026-11-01",
+  "scope": "Local artifact index; raw artifacts are not distributed by this manifest",
+  "files": [
+    {
+      "path": "runs/hd5870-cast-revisit-20261101/bytes-packed0.log",
+      "bytes": 760,
+      "sha256": "a86a6e7197018c19da4259cdef6701d94e5dbb93386e76196101310db15b2b5d"
+    },
+    {
+      "path": "runs/hd5870-cast-revisit-20261101/bytes-packed1.log",
+      "bytes": 760,
+      "sha256": "a86a6e7197018c19da4259cdef6701d94e5dbb93386e76196101310db15b2b5d"
+    },
+    {
+      "path": "runs/hd5870-cast-revisit-20261101/check_byte_outputs.py",
+      "bytes": 2361,
+      "sha256": "42170968e442a69e289e5f770f25ff3d778742a05b2b4b2f1c1aebe0a18284c6"
+    },
+    {
+      "path": "runs/hd5870-cast-revisit-20261101/controller.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd5870-cast-revisit-20261101/controller.py",
+      "bytes": 992,
+      "sha256": "78993c21e9667ecdb6e39123cee948ae21d06bc4f8c04bf8c5ef20da43658536"
+    },
+    {
+      "path": "runs/hd5870-cast-revisit-20261101/model-controller.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd5870-cast-revisit-20261101/model-controller.py",
+      "bytes": 3243,
+      "sha256": "8b957f84237362dac448c9d6b44b3efca5eab857b1e695b190520c504c13477e"
+    },
+    {
+      "path": "runs/hd5870-cast-revisit-20261101/native-b-allocator.json",
+      "bytes": 792,
+      "sha256": "5c3edd4dfcb594c71610e4ef8f48f246f560eb589e113f58aaf85ef36c124228"
+    },
+    {
+      "path": "runs/hd5870-cast-revisit-20261101/native-b-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd5870-cast-revisit-20261101/native-b.log",
+      "bytes": 14244,
+      "sha256": "9c7277d184dd12e09e2962b7e30d0ac112ed04a887f01a173884d7f071e3d3f1"
+    },
+    {
+      "path": "runs/hd5870-cast-revisit-20261101/native-cpu-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd5870-cast-revisit-20261101/native-cpu.log",
+      "bytes": 7337,
+      "sha256": "fcd2866bf1d9199589b52c781b78270d216250bd1fc937e90a5a0f97aed30a74"
+    },
+    {
+      "path": "runs/hd5870-cast-revisit-20261101/packed-a-allocator.json",
+      "bytes": 793,
+      "sha256": "081c9aa88ea876b1d292c7fb7a2fafa3ab41a24dc8eccda57af7e872a1dcf216"
+    },
+    {
+      "path": "runs/hd5870-cast-revisit-20261101/packed-a-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd5870-cast-revisit-20261101/packed-a.log",
+      "bytes": 14244,
+      "sha256": "7de82717dc3e91498fc01d8f325e97afc6680116e1b6abf41e0caf9543124411"
+    },
+    {
+      "path": "runs/hd5870-cast-revisit-20261101/packed-c-allocator.json",
+      "bytes": 791,
+      "sha256": "455fd79638ab8ca52d1cb5271da896651fbdabb89802f9a51944b6303d0a1e1b"
+    },
+    {
+      "path": "runs/hd5870-cast-revisit-20261101/packed-c-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd5870-cast-revisit-20261101/packed-c.log",
+      "bytes": 14244,
+      "sha256": "53c7a1b8a084ca53868cb07cfdf68e7de0eba83938dc2569226416877b6db2b6"
+    },
+    {
+      "path": "runs/hd5870-cast-revisit-20261101/results.json",
+      "bytes": 2190,
+      "sha256": "8dd6eff4383f1daa9c059b36f34dc5a345c533fa22d5a374a71553dc7994d6b4"
+    },
+    {
+      "path": "runs/hd5870-cast-revisit-20261101/scatter-packed0.log",
+      "bytes": 335,
+      "sha256": "4b2f4675ed1571b1e5611db2818d287bc69f4c52ea33388d52c00258bff0538d"
+    },
+    {
+      "path": "runs/hd5870-cast-revisit-20261101/scatter-packed1.log",
+      "bytes": 335,
+      "sha256": "4b2f4675ed1571b1e5611db2818d287bc69f4c52ea33388d52c00258bff0538d"
+    },
+    {
+      "path": "runs/hd5870-cast-revisit-20261101/status.json",
+      "bytes": 151,
+      "sha256": "427e9fcfd010a7044022a50001e1a80ba57bc6786d99b62940df1978da81c6ac"
+    },
+    {
+      "path": "runs/hd5870-cast-revisit-20261101/training-results.json",
+      "bytes": 3290,
+      "sha256": "9875cd8a98655589fa3efde2e090c21af080a5fcdfa71823aec0d1c112662a4d"
+    },
+    {
+      "path": "runs/hd5870-cast-revisit-20261101/trials.json",
+      "bytes": 4452,
+      "sha256": "d1929635f60708975cd042c7cb65a57a88ede3c28dc13911d6a34854ef62098e"
+    },
+    {
+      "path": "runs/hd5870-v9-regression-20261101/focused-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd5870-v9-regression-20261101/focused.log",
+      "bytes": 334,
+      "sha256": "28ec1042534bd84fff7465fea152cf8bf8cf76b0c17d83e65c986538cda8b18d"
+    },
+    {
+      "path": "runs/hd5870-v9-regression-20261101/general-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd5870-v9-regression-20261101/general.json",
+      "bytes": 573,
+      "sha256": "3865e19b69d611778d10987057f8d3872598679ff5267d2c04bffb29a6068466"
+    },
+    {
+      "path": "runs/hd5870-v9-regression-20261101/general.log",
+      "bytes": 1058,
+      "sha256": "bf926acac168637d412dfdc979bd8e5ad1649edc9d205109d9c6506c1e56797f"
+    },
+    {
+      "path": "runs/hd5870-v9-regression-20261101/inference-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd5870-v9-regression-20261101/inference.json",
+      "bytes": 312513,
+      "sha256": "3af434314532c168c96c7056a8d69e2969c9170f0d4abd972d121c57e84e6803"
+    },
+    {
+      "path": "runs/hd5870-v9-regression-20261101/inference.log",
+      "bytes": 2000,
+      "sha256": "4ee4792deacc618441bdc2efd087057825438d08df00dea7e6d5201ec7fed049"
+    },
+    {
+      "path": "runs/hd5870-v9-regression-20261101/metadata.json",
+      "bytes": 460,
+      "sha256": "eb4678d8060a22eb8e93b976a7451ed18c460485ec6f3004dbd2b9ba6af0b234"
+    },
+    {
+      "path": "runs/hd5870-v9-regression-20261101/model-cpu-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd5870-v9-regression-20261101/model-cpu.log",
+      "bytes": 7352,
+      "sha256": "dd13707062c4d0ff255825c621305e15ec48e67a27a0461550496d1300ec0108"
+    },
+    {
+      "path": "runs/hd5870-v9-regression-20261101/radeontop-stderr.log",
+      "bytes": 100,
+      "sha256": "e8c2931f580c7bf2ba8e916dc881532c9a1af193a4f735dd0e778a200d3cf866"
+    },
+    {
+      "path": "runs/hd5870-v9-regression-20261101/radeontop.log",
+      "bytes": 123634,
+      "sha256": "6c557c95bba0efa3758e743bdcec443466e3eb6ce368197cc2644c17adb07082"
+    },
+    {
+      "path": "runs/hd5870-v9-regression-20261101/status.json",
+      "bytes": 151,
+      "sha256": "9da5c0c0e6ce95274a113d31a47b22c326e69e9c2e61ba1dd8317612ddb098bb"
+    },
+    {
+      "path": "runs/hd5870-v9-regression-20261101/summary.json",
+      "bytes": 874,
+      "sha256": "9cc64d089a7f7a19bc8eae61d2b176f2df0b04d39a7ca6456132cad86b7b1e04"
+    },
+    {
+      "path": "runs/hd5870-v9-regression-20261101/training-results.json",
+      "bytes": 3285,
+      "sha256": "618894a4518580ef1fa45dfe8a2031eb578150603bda7f244a7038b5a95a3fd6"
+    },
+    {
+      "path": "runs/hd5870-v9-regression-20261101/trials.json",
+      "bytes": 6968,
+      "sha256": "70e59d55ec860da1c7abaf6a9b8b8c1f931a397fe9f7542b79dfd0829af123f7"
+    },
+    {
+      "path": "runs/hd5870-v9-regression-20261101/v8-a-allocator.json",
+      "bytes": 796,
+      "sha256": "b6e17a48022a18c7f722aab7630a3633abf74ad2992e91a4012b4c9fcd7bbe41"
+    },
+    {
+      "path": "runs/hd5870-v9-regression-20261101/v8-a-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd5870-v9-regression-20261101/v8-a.log",
+      "bytes": 14259,
+      "sha256": "046cb98ea0d9e690750a213c6b397d8e4c3fe74601e81458d01ea305eda909c5"
+    },
+    {
+      "path": "runs/hd5870-v9-regression-20261101/v8-b-allocator.json",
+      "bytes": 795,
+      "sha256": "e99195b5a48c686ebc8957b3e9b03d25577e856c66e89c96fb6c27f78702cf81"
+    },
+    {
+      "path": "runs/hd5870-v9-regression-20261101/v8-b-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd5870-v9-regression-20261101/v8-b.log",
+      "bytes": 14259,
+      "sha256": "4bffb872a0908cc28aa737802028d2708f4cda7b67f1b81abaf69d1d85544568"
+    },
+    {
+      "path": "runs/hd5870-v9-regression-20261101/v9-allocator.json",
+      "bytes": 793,
+      "sha256": "1970bff13d60fb3c47a9d7ac56d8c5d8c232b29287ef6347fd231a17f8062913"
+    },
+    {
+      "path": "runs/hd5870-v9-regression-20261101/v9-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd5870-v9-regression-20261101/v9.log",
+      "bytes": 14253,
+      "sha256": "a26c5e14c8d384e79a29c1502542a9b05799fd3b3c567aca3d0e8d8e59c24e46"
+    },
+    {
+      "path": "runs/hd5870-workgroup-revisit-20261101/auto128.c",
+      "bytes": 1534,
+      "sha256": "7ea435afe1b58dc34329ee4db7f13e84ac64e0e26296e1e6b3ab57b29010121e"
+    },
+    {
+      "path": "runs/hd5870-workgroup-revisit-20261101/auto256.c",
+      "bytes": 1534,
+      "sha256": "4e7aa4a4cada7a810fa7c34e4ace3bb66c56c3e7c7d3030a5772734a58fe96e3"
+    },
+    {
+      "path": "runs/hd5870-workgroup-revisit-20261101/auto32.c",
+      "bytes": 1532,
+      "sha256": "e965d7b32e61b9eec66fb058f1673ae4fd00431e6a20efc67d301eec6b0c1475"
+    },
+    {
+      "path": "runs/hd5870-workgroup-revisit-20261101/auto64.c",
+      "bytes": 1532,
+      "sha256": "11ae8655bc72006d7857d0a61b9253e0c39e7beba4780fc8da5511a80268fb29"
+    },
+    {
+      "path": "runs/hd5870-workgroup-revisit-20261101/bn-check.py",
+      "bytes": 1849,
+      "sha256": "31b91c4453067094885c751da8f87ca417e9359b9b2b950a78ac4d18c1e1b4ab"
+    },
+    {
+      "path": "runs/hd5870-workgroup-revisit-20261101/bn128-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd5870-workgroup-revisit-20261101/bn128.log",
+      "bytes": 1096,
+      "sha256": "249352f58003d76a1728d1a90830164eefc2459ce1bc534f5a254523c25eba6b"
+    },
+    {
+      "path": "runs/hd5870-workgroup-revisit-20261101/bn256-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd5870-workgroup-revisit-20261101/bn256.log",
+      "bytes": 1096,
+      "sha256": "249352f58003d76a1728d1a90830164eefc2459ce1bc534f5a254523c25eba6b"
+    },
+    {
+      "path": "runs/hd5870-workgroup-revisit-20261101/bn64-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd5870-workgroup-revisit-20261101/bn64.log",
+      "bytes": 1096,
+      "sha256": "249352f58003d76a1728d1a90830164eefc2459ce1bc534f5a254523c25eba6b"
+    },
+    {
+      "path": "runs/hd5870-workgroup-revisit-20261101/bytes-auto128-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd5870-workgroup-revisit-20261101/bytes-auto128.log",
+      "bytes": 765,
+      "sha256": "a6e1ccf93fe66e4b97df06376d5e13bf1f53d28ab3c862a92063d556faccf227"
+    },
+    {
+      "path": "runs/hd5870-workgroup-revisit-20261101/bytes-auto256-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd5870-workgroup-revisit-20261101/bytes-auto256.log",
+      "bytes": 765,
+      "sha256": "7efe2d0c50d90095998ab40d1e014a4798c9e819bf427ce86a8b460957f1f3f9"
+    },
+    {
+      "path": "runs/hd5870-workgroup-revisit-20261101/bytes-auto32-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd5870-workgroup-revisit-20261101/bytes-auto32.log",
+      "bytes": 764,
+      "sha256": "460d8b87eab2a17427dda6519f863a970a822d1dc121747c982144ec8e4ccb55"
+    },
+    {
+      "path": "runs/hd5870-workgroup-revisit-20261101/bytes-auto64-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd5870-workgroup-revisit-20261101/bytes-auto64.log",
+      "bytes": 764,
+      "sha256": "2c0691555999bae180e61a18c3718ed42f5b6eacb088204dbebfb0596a1da9dd"
+    },
+    {
+      "path": "runs/hd5870-workgroup-revisit-20261101/controller.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd5870-workgroup-revisit-20261101/controller.py",
+      "bytes": 2696,
+      "sha256": "3767b08b4aa62b80f57551dd2c266ee8e0cd4950f9ef81f081e356bf161000a4"
+    },
+    {
+      "path": "runs/hd5870-workgroup-revisit-20261101/copy-auto128-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd5870-workgroup-revisit-20261101/copy-auto128.log",
+      "bytes": 976,
+      "sha256": "b8110da56fbcdb11cbccf815544346e2897ec8c2f92a61d71ba339b96f4a00d4"
+    },
+    {
+      "path": "runs/hd5870-workgroup-revisit-20261101/copy-auto256-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd5870-workgroup-revisit-20261101/copy-auto256.log",
+      "bytes": 976,
+      "sha256": "110e1d83dc37438ec405e042d2bc4c90eb9e3b88e613276636a15c1d911facf0"
+    },
+    {
+      "path": "runs/hd5870-workgroup-revisit-20261101/copy-auto32-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd5870-workgroup-revisit-20261101/copy-auto32.log",
+      "bytes": 975,
+      "sha256": "2207b3ec27f63ee35bbf6eaa192a03e42c4e798b6d3fa2a55c503354854ce992"
+    },
+    {
+      "path": "runs/hd5870-workgroup-revisit-20261101/copy-auto64-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd5870-workgroup-revisit-20261101/copy-auto64.log",
+      "bytes": 975,
+      "sha256": "ffefa8cd11299533189ee1f71809631d8d85da3a43953d5524c2623fc6dc82de"
+    },
+    {
+      "path": "runs/hd5870-workgroup-revisit-20261101/status.json",
+      "bytes": 206,
+      "sha256": "241e547fb74d0b4113b47fc58547ddc8bc6cccba2969410523de58ef5ffe35f1"
+    },
+    {
+      "path": "runs/hd5870-workgroup-revisit-20261101/trials.json",
+      "bytes": 9142,
+      "sha256": "63fdcd31a7ffb64befa23e9f9fd07745ea433ece39e1e8b343848f020080c936"
+    },
+    {
+      "path": "runs/hd6850-copyflush-revisit-20261101/control-native-pool-growth-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-copyflush-revisit-20261101/control-native-pool-growth.log",
+      "bytes": 2754,
+      "sha256": "0420db01bb08472af7531b8c2cf9c0df676a73dc693a477d45c99be118ea82b2"
+    },
+    {
+      "path": "runs/hd6850-copyflush-revisit-20261101/controller.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-copyflush-revisit-20261101/controller.py",
+      "bytes": 4032,
+      "sha256": "dd126e4f9f46fed717c69045df8f8e5cad4a4a2baacf49988aff7047ab03b65d"
+    },
+    {
+      "path": "runs/hd6850-copyflush-revisit-20261101/cpu-comparisons.json",
+      "bytes": 652,
+      "sha256": "33f1c8e7beacef284668f3f4fc83d3fed5027724c15c329535a59ad0447ba330"
+    },
+    {
+      "path": "runs/hd6850-copyflush-revisit-20261101/disabled-copy-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-copyflush-revisit-20261101/disabled-copy.log",
+      "bytes": 974,
+      "sha256": "e058fc2e301b5ebcbca19634b43c5a0abcdb5e5d8dc1f8e7c78c949acbedae72"
+    },
+    {
+      "path": "runs/hd6850-copyflush-revisit-20261101/disabled-lifetimes-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-copyflush-revisit-20261101/disabled-lifetimes.log",
+      "bytes": 888,
+      "sha256": "ddf333dc56081229a56f8b6f11f0338976f37637bb8c271e0cbec732e048cf64"
+    },
+    {
+      "path": "runs/hd6850-copyflush-revisit-20261101/disabled-model-cpu-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-copyflush-revisit-20261101/disabled-model-cpu.log",
+      "bytes": 7356,
+      "sha256": "a32de028df9d8406929341ac3d2b01f438607a07f9726664ecb2379060a041ba"
+    },
+    {
+      "path": "runs/hd6850-copyflush-revisit-20261101/disabled-native-pool-growth-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-copyflush-revisit-20261101/disabled-native-pool-growth.log",
+      "bytes": 2754,
+      "sha256": "0420db01bb08472af7531b8c2cf9c0df676a73dc693a477d45c99be118ea82b2"
+    },
+    {
+      "path": "runs/hd6850-copyflush-revisit-20261101/disabled-offsets-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-copyflush-revisit-20261101/disabled-offsets.log",
+      "bytes": 469,
+      "sha256": "76517b946aac8dfa3ff8955eec93005368f276d466d7446db8690448b29277a1"
+    },
+    {
+      "path": "runs/hd6850-copyflush-revisit-20261101/scope.json",
+      "bytes": 332,
+      "sha256": "c91734ae4d93c87bd502bc9e7f88b75ba434587b324941bede8536a6d477dc30"
+    },
+    {
+      "path": "runs/hd6850-copyflush-revisit-20261101/status.json",
+      "bytes": 205,
+      "sha256": "5db945d13015e2275bdb8ac9edda9509a013138f803161f2c83bb002c3babd18"
+    },
+    {
+      "path": "runs/hd6850-copyflush-revisit-20261101/summary.json",
+      "bytes": 433,
+      "sha256": "3d559cf480fb222762bdc281522ca3ed22ca96d6195a90bbce144e220516528e"
+    },
+    {
+      "path": "runs/hd6850-copyflush-revisit-20261101/trials.json",
+      "bytes": 6502,
+      "sha256": "225558ec4c845b3c702d9a1f215ce44b3199004621465ff43b415725fa90517a"
+    },
+    {
+      "path": "runs/hd6850-gather-revisit-20261101/assessment.json",
+      "bytes": 2616,
+      "sha256": "e20d35ba99b99b6db3412205bf089fd232f6beccb9f41a26462bf0edf707af11"
+    },
+    {
+      "path": "runs/hd6850-gather-revisit-20261101/control-conv-kernel.log",
+      "bytes": 2391,
+      "sha256": "350c8c379c8df347ad68df100a31847a637d7121c5aaa270dc549bddbb9a2cbe"
+    },
+    {
+      "path": "runs/hd6850-gather-revisit-20261101/control-conv.log",
+      "bytes": 1547,
+      "sha256": "8f39c1f7ae165979c45b65105c1ae91385a82caf313ad3cef3abf107b9ebc1f6"
+    },
+    {
+      "path": "runs/hd6850-gather-revisit-20261101/control-cpu-comparisons.json",
+      "bytes": 652,
+      "sha256": "33f1c8e7beacef284668f3f4fc83d3fed5027724c15c329535a59ad0447ba330"
+    },
+    {
+      "path": "runs/hd6850-gather-revisit-20261101/control-cpu-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-gather-revisit-20261101/control-cpu.log",
+      "bytes": 7347,
+      "sha256": "be6a5a02952af32df1f84185160a36bb06a96ca869b44bdf4a4d21492ce1f7a2"
+    },
+    {
+      "path": "runs/hd6850-gather-revisit-20261101/control-pool-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-gather-revisit-20261101/control-pool.log",
+      "bytes": 1304,
+      "sha256": "7ea7517bb04ab6b372dc8d398c8ddaa808131fc94cbe357a1b2f171214867fdd"
+    },
+    {
+      "path": "runs/hd6850-gather-revisit-20261101/controller.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-gather-revisit-20261101/controller.py",
+      "bytes": 5137,
+      "sha256": "f5ee201718bbd036dca2b30253f23222065629a3f8c585e2863bd0a40a6d4d01"
+    },
+    {
+      "path": "runs/hd6850-gather-revisit-20261101/conv-check.py",
+      "bytes": 3544,
+      "sha256": "a36216da3279d115f79ed73d41151c8ae770cf832536e4b16b1b44ea37e75f85"
+    },
+    {
+      "path": "runs/hd6850-gather-revisit-20261101/conv-original-conv-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-gather-revisit-20261101/conv-original-conv.log",
+      "bytes": 829,
+      "sha256": "f13b1901095e924e607599f5f560c56f67aa1331b5c0a51c2d5c0de94d615def"
+    },
+    {
+      "path": "runs/hd6850-gather-revisit-20261101/plan.json",
+      "bytes": 580,
+      "sha256": "ebe73fe1322415c2e5ebda571e8a23fd202e733ba36a4a26f002a7a2cffafcb5"
+    },
+    {
+      "path": "runs/hd6850-gather-revisit-20261101/pool-original-pool-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-gather-revisit-20261101/pool-original-pool.log",
+      "bytes": 834,
+      "sha256": "1685e7b916adec7afeb5c8379b667be798d636e150c20faed91f4ed1bf39cf5a"
+    },
+    {
+      "path": "runs/hd6850-gather-revisit-20261101/status.json",
+      "bytes": 167,
+      "sha256": "b415d08e028740278bc64afb4205fa609d51d9e50380e164b967b4b21686de8f"
+    },
+    {
+      "path": "runs/hd6850-gather-revisit-20261101/summary.json",
+      "bytes": 570,
+      "sha256": "3629855a69ed2f286de30a3a6bd4ec5d3ff7ae0b8cf7d50ac1f1417086e1aa08"
+    },
+    {
+      "path": "runs/hd6850-gather-revisit-20261101/trials.json",
+      "bytes": 6066,
+      "sha256": "f1bf98a9f95e1945c56ee53f4fc0f7457e87200e63be2e88a00d9ac2ae50f86e"
+    },
+    {
+      "path": "runs/hd6850-gemmtiles-revisit-20261101/check_gemm_tiles.py",
+      "bytes": 3580,
+      "sha256": "b846fb42fc23d15236b1f702025ed30555db471e13379716209634d945f2d278"
+    },
+    {
+      "path": "runs/hd6850-gemmtiles-revisit-20261101/controller.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-gemmtiles-revisit-20261101/controller.py",
+      "bytes": 4684,
+      "sha256": "2a3423bca4367ab62deed00caef7da064b282d7ba6b27f2760484ed4aff76260"
+    },
+    {
+      "path": "runs/hd6850-gemmtiles-revisit-20261101/cpu-comparisons.json",
+      "bytes": 652,
+      "sha256": "33f1c8e7beacef284668f3f4fc83d3fed5027724c15c329535a59ad0447ba330"
+    },
+    {
+      "path": "runs/hd6850-gemmtiles-revisit-20261101/default-tiles-model-cpu-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-gemmtiles-revisit-20261101/default-tiles-model-cpu.log",
+      "bytes": 7356,
+      "sha256": "f27ef2f355fe504d3389a71c6ce488a50108ce911e5233fdcb37cb4d3c3d30eb"
+    },
+    {
+      "path": "runs/hd6850-gemmtiles-revisit-20261101/fixtures-small0-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-gemmtiles-revisit-20261101/fixtures-small0.log",
+      "bytes": 1547,
+      "sha256": "8f39c1f7ae165979c45b65105c1ae91385a82caf313ad3cef3abf107b9ebc1f6"
+    },
+    {
+      "path": "runs/hd6850-gemmtiles-revisit-20261101/fixtures-small1-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-gemmtiles-revisit-20261101/fixtures-small1.log",
+      "bytes": 1547,
+      "sha256": "8f39c1f7ae165979c45b65105c1ae91385a82caf313ad3cef3abf107b9ebc1f6"
+    },
+    {
+      "path": "runs/hd6850-gemmtiles-revisit-20261101/scope.json",
+      "bytes": 469,
+      "sha256": "b9897dc52479daa7fda43342bf2aee79240e7c053df918b91faa126091d50eef"
+    },
+    {
+      "path": "runs/hd6850-gemmtiles-revisit-20261101/status.json",
+      "bytes": 159,
+      "sha256": "1335373ddaace8c28a5751e4f665b4661b404041bfa72312c240af2d31d1fdfa"
+    },
+    {
+      "path": "runs/hd6850-gemmtiles-revisit-20261101/summary.json",
+      "bytes": 367,
+      "sha256": "2c7f72a11ab215ca5320876033962a1c5a63981e34a21aa04fbf0341254d6207"
+    },
+    {
+      "path": "runs/hd6850-gemmtiles-revisit-20261101/training-results.json",
+      "bytes": 4393,
+      "sha256": "a436a89b6117228d6b7936a0919d8c560ba68e4b20a6ad7fe2639ffac106a3cc"
+    },
+    {
+      "path": "runs/hd6850-gemmtiles-revisit-20261101/trial1-small1-allocator.json",
+      "bytes": 795,
+      "sha256": "d24ec2a6ad7dfbd8740ee608ba77d882175ed86a1ccec49b92046e6929158d0d"
+    },
+    {
+      "path": "runs/hd6850-gemmtiles-revisit-20261101/trial1-small1-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-gemmtiles-revisit-20261101/trial1-small1.log",
+      "bytes": 26506,
+      "sha256": "c78b0e5db9b98b95900ba3553e4d47f2104c162e55dbb5b6bd7f1775414fb2e6"
+    },
+    {
+      "path": "runs/hd6850-gemmtiles-revisit-20261101/trial2-small0-allocator.json",
+      "bytes": 796,
+      "sha256": "551bc558ebcf99ea66958bfc3275e2cb3a5b1aed83feac594fd34d33cd39247c"
+    },
+    {
+      "path": "runs/hd6850-gemmtiles-revisit-20261101/trial2-small0-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-gemmtiles-revisit-20261101/trial2-small0.log",
+      "bytes": 26506,
+      "sha256": "983362df744c67525a934896e62a0f5b7dc382d79addec205c1fe35807a83fb1"
+    },
+    {
+      "path": "runs/hd6850-gemmtiles-revisit-20261101/trial3-small0-allocator.json",
+      "bytes": 796,
+      "sha256": "5024d83bc67eec1361af7e61221cf9b70578918cb0e23cb2961617c76bf478d0"
+    },
+    {
+      "path": "runs/hd6850-gemmtiles-revisit-20261101/trial3-small0-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-gemmtiles-revisit-20261101/trial3-small0.log",
+      "bytes": 26506,
+      "sha256": "79d1d300fef7ee7313596630f2ffa05b03bc256ecdb5d0e0a4f481c8ae85c17f"
+    },
+    {
+      "path": "runs/hd6850-gemmtiles-revisit-20261101/trial4-small1-allocator.json",
+      "bytes": 796,
+      "sha256": "8f41cfbd95ba26c996f076ab54d6653e77abb9ea1aa605d4dce6ff83f8c34452"
+    },
+    {
+      "path": "runs/hd6850-gemmtiles-revisit-20261101/trial4-small1-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-gemmtiles-revisit-20261101/trial4-small1.log",
+      "bytes": 26506,
+      "sha256": "6d40c0fe7c6a4dd298a8a04f66ef439693109af6516a2c6066b8bf8d1d427be4"
+    },
+    {
+      "path": "runs/hd6850-gemmtiles-revisit-20261101/trials.json",
+      "bytes": 9314,
+      "sha256": "8df869e5f5b31d5dc13d56cc75b754bbf703b09e9d729c935876b9889d57e901"
+    },
+    {
+      "path": "runs/hd6850-index-copy-benchmark-20261101/combined-copies-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-index-copy-benchmark-20261101/combined-copies.log",
+      "bytes": 974,
+      "sha256": "e449926fe61b9b3b900224806664cd526c292448c2cc0850c44e4bf8cb2dcc30"
+    },
+    {
+      "path": "runs/hd6850-index-copy-benchmark-20261101/combined-cpu-comparisons.json",
+      "bytes": 652,
+      "sha256": "33f1c8e7beacef284668f3f4fc83d3fed5027724c15c329535a59ad0447ba330"
+    },
+    {
+      "path": "runs/hd6850-index-copy-benchmark-20261101/combined-cpu-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-index-copy-benchmark-20261101/combined-cpu.log",
+      "bytes": 7359,
+      "sha256": "8939552fa12ffddd88ed3ccb2a6e8830d8a60589f2cc54455701b3775bfc07a7"
+    },
+    {
+      "path": "runs/hd6850-index-copy-benchmark-20261101/combined-indexing-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-index-copy-benchmark-20261101/combined-indexing.log",
+      "bytes": 484,
+      "sha256": "f4c341dcf035095222b862bb02ddd5962e187261b58bdfbe37b7c4de3ca29356"
+    },
+    {
+      "path": "runs/hd6850-index-copy-benchmark-20261101/combined-sparse200-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-index-copy-benchmark-20261101/combined-sparse200.log",
+      "bytes": 350,
+      "sha256": "a593c59157f11f7b5fc2d6d66d47396d67404c36d6898136dcac2aebaf65526c"
+    },
+    {
+      "path": "runs/hd6850-index-copy-benchmark-20261101/controller.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-index-copy-benchmark-20261101/controller.py",
+      "bytes": 5264,
+      "sha256": "612f0bfaa4148e7c163705e1c7f328553f13dd636c84862fb2ce329b2826f262"
+    },
+    {
+      "path": "runs/hd6850-index-copy-benchmark-20261101/plan.json",
+      "bytes": 863,
+      "sha256": "082d17c510ddb5ef16def6ee6e201b695b720c26cbed94fad2f353376dff1eb3"
+    },
+    {
+      "path": "runs/hd6850-index-copy-benchmark-20261101/r1-combined-allocator.json",
+      "bytes": 795,
+      "sha256": "795140cf27b442a8275cf0addae312cf68d7f843736608f2b0a61f9cb8665d1c"
+    },
+    {
+      "path": "runs/hd6850-index-copy-benchmark-20261101/r1-combined-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-index-copy-benchmark-20261101/r1-combined.log",
+      "bytes": 26518,
+      "sha256": "d8198cba5d6d1dbd0baf1801514de526f88dda6049e2f0f4832331ec0ed8d033"
+    },
+    {
+      "path": "runs/hd6850-index-copy-benchmark-20261101/r1-control-allocator.json",
+      "bytes": 796,
+      "sha256": "f8452a720a5d02b709f21b74c91ddccfc4165601434f213dcf72126cba58b26d"
+    },
+    {
+      "path": "runs/hd6850-index-copy-benchmark-20261101/r1-control-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-index-copy-benchmark-20261101/r1-control.log",
+      "bytes": 26515,
+      "sha256": "6fc0116dc5df4b57c0fc36bbaf3c1cff48c6ddd8d3e0583be4755388c8313ff8"
+    },
+    {
+      "path": "runs/hd6850-index-copy-benchmark-20261101/r1-index128-allocator.json",
+      "bytes": 796,
+      "sha256": "3fbb67245a677d6c7459976502a6db338dac8038e0b41b444481e49335007fac"
+    },
+    {
+      "path": "runs/hd6850-index-copy-benchmark-20261101/r1-index128-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-index-copy-benchmark-20261101/r1-index128.log",
+      "bytes": 26518,
+      "sha256": "ef2def3ed13e8284039368dfce487a0ff1cca956c1bc2ac57a624653a40b80bd"
+    },
+    {
+      "path": "runs/hd6850-index-copy-benchmark-20261101/r1-index64-allocator.json",
+      "bytes": 796,
+      "sha256": "984e5a8c6ca1451f7024059b5755c383bf9617af74304e4ae79bb8d55cb3d720"
+    },
+    {
+      "path": "runs/hd6850-index-copy-benchmark-20261101/r1-index64-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-index-copy-benchmark-20261101/r1-index64.log",
+      "bytes": 26515,
+      "sha256": "2191dbe3158dd7f7154636e96fa3e5699a3fc8485eebfd3cb8d6e61de4e635bd"
+    },
+    {
+      "path": "runs/hd6850-index-copy-benchmark-20261101/r1-original-copy-allocator.json",
+      "bytes": 795,
+      "sha256": "6311c6f10f23c626a2a902cb57274c5ae2947d543faa3ee01ab86c7433688807"
+    },
+    {
+      "path": "runs/hd6850-index-copy-benchmark-20261101/r1-original-copy-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-index-copy-benchmark-20261101/r1-original-copy.log",
+      "bytes": 26532,
+      "sha256": "cea60581d0374727553a3711536301317d6b7cbb6ee84b618ab3c90d45718d3f"
+    },
+    {
+      "path": "runs/hd6850-index-copy-benchmark-20261101/r2-combined-allocator.json",
+      "bytes": 795,
+      "sha256": "79f00ddb5335d7b9e1bc13d9eaf76d491273105daf20b5ecc536a0ef69c3a7bd"
+    },
+    {
+      "path": "runs/hd6850-index-copy-benchmark-20261101/r2-combined-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-index-copy-benchmark-20261101/r2-combined.log",
+      "bytes": 26517,
+      "sha256": "16fa7117a552447c6ab168acf866d6edb5a49dab2ed3534366944f5f840c16f3"
+    },
+    {
+      "path": "runs/hd6850-index-copy-benchmark-20261101/r2-control-allocator.json",
+      "bytes": 795,
+      "sha256": "ddab8ecbea39a06f346764d1ec9b4f1af051bd7e062f85c94881c3cd933af1bc"
+    },
+    {
+      "path": "runs/hd6850-index-copy-benchmark-20261101/r2-control-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-index-copy-benchmark-20261101/r2-control.log",
+      "bytes": 26515,
+      "sha256": "5c40513d7562b011363292d23e0ffd38067c7ad765152e7226235f9b82e1ed40"
+    },
+    {
+      "path": "runs/hd6850-index-copy-benchmark-20261101/r2-index128-allocator.json",
+      "bytes": 795,
+      "sha256": "7664735cef672487fe945e85e24095c0da6442a18ace21c7144629511db6b852"
+    },
+    {
+      "path": "runs/hd6850-index-copy-benchmark-20261101/r2-index128-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-index-copy-benchmark-20261101/r2-index128.log",
+      "bytes": 26517,
+      "sha256": "7e78fb2fb1055e3a8c9d5e571b1acff4c2188e4eb79edd9db53aa01430b511ad"
+    },
+    {
+      "path": "runs/hd6850-index-copy-benchmark-20261101/r2-index64-allocator.json",
+      "bytes": 795,
+      "sha256": "c6b4be55190bb27976d643c49dca9fffe67cc2beb810591b4c216a6cd00cbacb"
+    },
+    {
+      "path": "runs/hd6850-index-copy-benchmark-20261101/r2-index64-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-index-copy-benchmark-20261101/r2-index64.log",
+      "bytes": 26515,
+      "sha256": "b1b9d26ab950d143a7e5c5ab36852642bb0686e4bfff1c64f1cb7c383610af33"
+    },
+    {
+      "path": "runs/hd6850-index-copy-benchmark-20261101/r2-original-copy-allocator.json",
+      "bytes": 796,
+      "sha256": "c63ec4baeaaa056eb9536ac4fbce6b9c5c69aa938d23ec86c1b6ed97b9507ad4"
+    },
+    {
+      "path": "runs/hd6850-index-copy-benchmark-20261101/r2-original-copy-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-index-copy-benchmark-20261101/r2-original-copy.log",
+      "bytes": 26532,
+      "sha256": "f833054e259caade623b27c87571b19e2f4fab14252f37ba1891af9023ff7b9d"
+    },
+    {
+      "path": "runs/hd6850-index-copy-benchmark-20261101/status.json",
+      "bytes": 159,
+      "sha256": "3c59e4e41ffd83f4458eca9dd03b33b1ab5116c6aebbd685785072f9410e0be2"
+    },
+    {
+      "path": "runs/hd6850-index-copy-benchmark-20261101/summary.json",
+      "bytes": 1371,
+      "sha256": "80c9acbb55b6a1b1c8f4c4bb41c37f02072e51821ee3765912f9915eaba068a3"
+    },
+    {
+      "path": "runs/hd6850-index-copy-benchmark-20261101/training-results.json",
+      "bytes": 11178,
+      "sha256": "3bbfe781c6d22c10fb9aa87dbbecd4a0cddbe00e33b2ae2965c95454fce1ccc7"
+    },
+    {
+      "path": "runs/hd6850-index-copy-benchmark-20261101/trials.json",
+      "bytes": 20187,
+      "sha256": "aa64848ca487004a3a32f40ff0dd411af0965f45fc0b5eda4229ffaff949346d"
+    },
+    {
+      "path": "runs/hd6850-index-copy-revisit-20261101/assessment.json",
+      "bytes": 552,
+      "sha256": "35672c3e3e538d94fff3c50cdc69d8db6cd0c16ca5a315641984494429c358c2"
+    },
+    {
+      "path": "runs/hd6850-index-copy-revisit-20261101/control-copies-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-index-copy-revisit-20261101/control-copies.log",
+      "bytes": 5735,
+      "sha256": "0c788f711b50fe013c568c45f642291587bdf597ceff0fc57aee9f5b58dc08e1"
+    },
+    {
+      "path": "runs/hd6850-index-copy-revisit-20261101/control-cpu-comparisons.json",
+      "bytes": 652,
+      "sha256": "33f1c8e7beacef284668f3f4fc83d3fed5027724c15c329535a59ad0447ba330"
+    },
+    {
+      "path": "runs/hd6850-index-copy-revisit-20261101/control-cpu-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-index-copy-revisit-20261101/control-cpu.log",
+      "bytes": 7356,
+      "sha256": "de65ebe5385d91db9949958060bbc453ed7c0a65c78cb7632eb46098f94d77dc"
+    },
+    {
+      "path": "runs/hd6850-index-copy-revisit-20261101/control-indexing-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-index-copy-revisit-20261101/control-indexing.log",
+      "bytes": 10359,
+      "sha256": "e1971349799558569fe0ab923560a33a78dc7a8d8bac1c03df800642c9dbbf18"
+    },
+    {
+      "path": "runs/hd6850-index-copy-revisit-20261101/control-sparse200-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-index-copy-revisit-20261101/control-sparse200.log",
+      "bytes": 102550,
+      "sha256": "6598da67ab85adda03acf65f11440a6354a14e15ea477dee179a24301a0baf84"
+    },
+    {
+      "path": "runs/hd6850-index-copy-revisit-20261101/controller.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-index-copy-revisit-20261101/controller.py",
+      "bytes": 4744,
+      "sha256": "8d7e505014dcfc75897e0ce4a94f5a9b3b1cd70eaeb744f36992db7990b030a3"
+    },
+    {
+      "path": "runs/hd6850-index-copy-revisit-20261101/index128-copies-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-index-copy-revisit-20261101/index128-copies.log",
+      "bytes": 5735,
+      "sha256": "0c788f711b50fe013c568c45f642291587bdf597ceff0fc57aee9f5b58dc08e1"
+    },
+    {
+      "path": "runs/hd6850-index-copy-revisit-20261101/index128-cpu-comparisons.json",
+      "bytes": 652,
+      "sha256": "33f1c8e7beacef284668f3f4fc83d3fed5027724c15c329535a59ad0447ba330"
+    },
+    {
+      "path": "runs/hd6850-index-copy-revisit-20261101/index128-cpu-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-index-copy-revisit-20261101/index128-cpu.log",
+      "bytes": 7359,
+      "sha256": "52cac41c84a91ebd57d69e3e15193afa54103cd4307341d9b19acfb61a129eb9"
+    },
+    {
+      "path": "runs/hd6850-index-copy-revisit-20261101/index128-indexing-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-index-copy-revisit-20261101/index128-indexing.log",
+      "bytes": 10405,
+      "sha256": "785dd5c9446e627b3a74357df0d51889363e1781be869727f7ea0dcd552f0bf8"
+    },
+    {
+      "path": "runs/hd6850-index-copy-revisit-20261101/index128-sparse200-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-index-copy-revisit-20261101/index128-sparse200.log",
+      "bytes": 102950,
+      "sha256": "35dcee42dde1f8fa91ff7a01036ce661c4504254ab3b7888a5f14f856e1180fa"
+    },
+    {
+      "path": "runs/hd6850-index-copy-revisit-20261101/index64-copies-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-index-copy-revisit-20261101/index64-copies.log",
+      "bytes": 5735,
+      "sha256": "0c788f711b50fe013c568c45f642291587bdf597ceff0fc57aee9f5b58dc08e1"
+    },
+    {
+      "path": "runs/hd6850-index-copy-revisit-20261101/index64-cpu-comparisons.json",
+      "bytes": 652,
+      "sha256": "33f1c8e7beacef284668f3f4fc83d3fed5027724c15c329535a59ad0447ba330"
+    },
+    {
+      "path": "runs/hd6850-index-copy-revisit-20261101/index64-cpu-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-index-copy-revisit-20261101/index64-cpu.log",
+      "bytes": 7356,
+      "sha256": "7b40c1e5fff27b05ae595e47a7bd077f2eba23c993baf0b68ec3b41272d78c9e"
+    },
+    {
+      "path": "runs/hd6850-index-copy-revisit-20261101/index64-indexing-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-index-copy-revisit-20261101/index64-indexing.log",
+      "bytes": 10359,
+      "sha256": "72f0be26d7caa469dc92d5d8b8f27d91cbb73df19924d49c185f861060a673ef"
+    },
+    {
+      "path": "runs/hd6850-index-copy-revisit-20261101/index64-sparse200-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-index-copy-revisit-20261101/index64-sparse200.log",
+      "bytes": 102550,
+      "sha256": "31c8d6ca457a91a2f81fcc6c1126ebf13f96a93d87169a1ea014c94077b45ba4"
+    },
+    {
+      "path": "runs/hd6850-index-copy-revisit-20261101/original-copy-copies-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-index-copy-revisit-20261101/original-copy-copies.log",
+      "bytes": 6197,
+      "sha256": "f6508bce973456d6a0fe62592c0e5ea52fbd827c2d2819b47dc4c76b930fa97f"
+    },
+    {
+      "path": "runs/hd6850-index-copy-revisit-20261101/original-copy-cpu-comparisons.json",
+      "bytes": 652,
+      "sha256": "33f1c8e7beacef284668f3f4fc83d3fed5027724c15c329535a59ad0447ba330"
+    },
+    {
+      "path": "runs/hd6850-index-copy-revisit-20261101/original-copy-cpu-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-index-copy-revisit-20261101/original-copy-cpu.log",
+      "bytes": 7374,
+      "sha256": "00bf37a3d85b3b23fd1a8a12f02f3eff2d74ad2cec442867a26e3d91665e38fa"
+    },
+    {
+      "path": "runs/hd6850-index-copy-revisit-20261101/original-copy-indexing-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-index-copy-revisit-20261101/original-copy-indexing.log",
+      "bytes": 10359,
+      "sha256": "e1971349799558569fe0ab923560a33a78dc7a8d8bac1c03df800642c9dbbf18"
+    },
+    {
+      "path": "runs/hd6850-index-copy-revisit-20261101/original-copy-sparse200-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-index-copy-revisit-20261101/original-copy-sparse200.log",
+      "bytes": 102550,
+      "sha256": "6598da67ab85adda03acf65f11440a6354a14e15ea477dee179a24301a0baf84"
+    },
+    {
+      "path": "runs/hd6850-index-copy-revisit-20261101/plan.json",
+      "bytes": 675,
+      "sha256": "757641c40077081e9c560e92009df2175be9a0bfd78bbfa800f8cb592dc6681c"
+    },
+    {
+      "path": "runs/hd6850-index-copy-revisit-20261101/status.json",
+      "bytes": 170,
+      "sha256": "852b2525e93a31958d69bf022898031270e6ce7e4db310299f16ed89dda03f00"
+    },
+    {
+      "path": "runs/hd6850-index-copy-revisit-20261101/trials.json",
+      "bytes": 19740,
+      "sha256": "9238bb1c4fcc4e8751c40295b59c6c36b46ae470286696471355801356b7e783"
+    },
+    {
+      "path": "runs/hd6850-kernelflush-off-copyflush-on-20261101/controller.log",
+      "bytes": 1211,
+      "sha256": "a2eb3349a1ebfc98cda5e123aa4e39bca0b5dc3402553c51777dee41c0f75f27"
+    },
+    {
+      "path": "runs/hd6850-kernelflush-off-copyflush-on-20261101/controller.py",
+      "bytes": 4039,
+      "sha256": "1bb534f2a8925ac8f5aea3511bf8dee1037d3f9af73abaf2b8eefff8046b8e66"
+    },
+    {
+      "path": "runs/hd6850-kernelflush-off-copyflush-on-20261101/disabled-copy-kernel.log",
+      "bytes": 237,
+      "sha256": "76c62ce21f7ebcaf31d7f72d1ec43c7548038874675b79aed0ff965dcf1aa224"
+    },
+    {
+      "path": "runs/hd6850-kernelflush-off-copyflush-on-20261101/disabled-copy.log",
+      "bytes": 83,
+      "sha256": "0ab10eec61b4de6ad31fca2ddd053297903e1079e2e19809fcc61fbde0a17ba3"
+    },
+    {
+      "path": "runs/hd6850-kernelflush-off-copyflush-on-20261101/no-kernelflush-native-pool-growth-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-kernelflush-off-copyflush-on-20261101/no-kernelflush-native-pool-growth-repeat-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-kernelflush-off-copyflush-on-20261101/no-kernelflush-native-pool-growth-repeat.log",
+      "bytes": 2697,
+      "sha256": "53e96cc0e75410817523cf31c9a6c4184b573dd04ba6d1d37db42896f3702d88"
+    },
+    {
+      "path": "runs/hd6850-kernelflush-off-copyflush-on-20261101/no-kernelflush-native-pool-growth.log",
+      "bytes": 2697,
+      "sha256": "53e96cc0e75410817523cf31c9a6c4184b573dd04ba6d1d37db42896f3702d88"
+    },
+    {
+      "path": "runs/hd6850-kernelflush-off-copyflush-on-20261101/scope.json",
+      "bytes": 352,
+      "sha256": "3489bfb97f59761a7501a0f0c19b49c847d3c31d12bff139dc4c2954e4093002"
+    },
+    {
+      "path": "runs/hd6850-kernelflush-off-copyflush-on-20261101/status.json",
+      "bytes": 894,
+      "sha256": "8df70c43874f3cdced42cde074e76eb4d390a8e12c158f683a26900f48911fe6"
+    },
+    {
+      "path": "runs/hd6850-kernelflush-off-copyflush-on-20261101/trials.json",
+      "bytes": 2966,
+      "sha256": "a7174759c3c3dab3e732d10b431ccc2befae4ae2e45f20b318992bd73deafbef"
+    },
+    {
+      "path": "runs/hd6850-kernelflush-revisit-20261101/controller.log",
+      "bytes": 1337,
+      "sha256": "5f9ade192fa2e6f36c02ef1af96ff54e4a4f9f7a39223827b42089c611a665ab"
+    },
+    {
+      "path": "runs/hd6850-kernelflush-revisit-20261101/controller.py",
+      "bytes": 4172,
+      "sha256": "a459f26bfe920c1c27edcdb27ef83f494be2832d1ace72f7c26a4a47d44576b7"
+    },
+    {
+      "path": "runs/hd6850-kernelflush-revisit-20261101/no-kernelflush-native-pool-growth-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-kernelflush-revisit-20261101/no-kernelflush-native-pool-growth.log",
+      "bytes": 571,
+      "sha256": "76ca44772dd52c0a315336b4821c8c7a6e44f3b12c219c203f4af4a3b37f032a"
+    },
+    {
+      "path": "runs/hd6850-kernelflush-revisit-20261101/restored-control-copy.log",
+      "bytes": 974,
+      "sha256": "e058fc2e301b5ebcbca19634b43c5a0abcdb5e5d8dc1f8e7c78c949acbedae72"
+    },
+    {
+      "path": "runs/hd6850-kernelflush-revisit-20261101/scope.json",
+      "bytes": 392,
+      "sha256": "3eeb3e8a8768c3bd8d176e64812ec86478c307aa70bf6d0b592484c773bd978c"
+    },
+    {
+      "path": "runs/hd6850-kernelflush-revisit-20261101/status.json",
+      "bytes": 1069,
+      "sha256": "8a65c3b124f07bea55fa68aaa0b8aeeb899e05b549c26d4fb98b16e0fb207816"
+    },
+    {
+      "path": "runs/hd6850-kernelflush-revisit-20261101/summary.json",
+      "bytes": 610,
+      "sha256": "cf3efef72641b78e7234ae6d82784ab2f0228164ae7d7eda7371e78f99b936fd"
+    },
+    {
+      "path": "runs/hd6850-kernelflush-revisit-20261101/trials.json",
+      "bytes": 1084,
+      "sha256": "679179a080668b988cd717384dd98d9c3cc4ac691f21da0b1c00e48310d9935c"
+    },
+    {
+      "path": "runs/hd6850-minimal-v1-consolidation-20261101/bn-kernel.log",
+      "bytes": 3287,
+      "sha256": "d8bc5b246f581de9389fc5f3dcdb64e6277946dc6a0bbb2a5000943b41567bb9"
+    },
+    {
+      "path": "runs/hd6850-minimal-v1-consolidation-20261101/bn.log",
+      "bytes": 1095,
+      "sha256": "f7c0cdd6bf0aeb31554d85f4005c548ff2c88110ac27fed36b08a0b5540a32dd"
+    },
+    {
+      "path": "runs/hd6850-minimal-v1-consolidation-20261101/bytes-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-minimal-v1-consolidation-20261101/bytes.log",
+      "bytes": 759,
+      "sha256": "b7487a89f94063f7fcdfb28147ec4a8890894209ee7d22f5e9c25f470c653eb3"
+    },
+    {
+      "path": "runs/hd6850-minimal-v1-consolidation-20261101/controller.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-minimal-v1-consolidation-20261101/controller.py",
+      "bytes": 4111,
+      "sha256": "a1309ff1936888276280bf8bf7f5816b602f8d5e96c005ab8d157f58c155848c"
+    },
+    {
+      "path": "runs/hd6850-minimal-v1-consolidation-20261101/conv-gemm-kernel.log",
+      "bytes": 2391,
+      "sha256": "854ad8e00593f8c06852ccf2afd906b9e64daca8dfac7ee1eae3c0bcc4961aa3"
+    },
+    {
+      "path": "runs/hd6850-minimal-v1-consolidation-20261101/conv-gemm.log",
+      "bytes": 1547,
+      "sha256": "8f39c1f7ae165979c45b65105c1ae91385a82caf313ad3cef3abf107b9ebc1f6"
+    },
+    {
+      "path": "runs/hd6850-minimal-v1-consolidation-20261101/copy-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-minimal-v1-consolidation-20261101/copy.log",
+      "bytes": 970,
+      "sha256": "73510dced9ff02cc6905b627fc8978bd3963484827f6058e51ee119dba0b41b5"
+    },
+    {
+      "path": "runs/hd6850-minimal-v1-consolidation-20261101/cpu-comparisons.json",
+      "bytes": 652,
+      "sha256": "33f1c8e7beacef284668f3f4fc83d3fed5027724c15c329535a59ad0447ba330"
+    },
+    {
+      "path": "runs/hd6850-minimal-v1-consolidation-20261101/indexing-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-minimal-v1-consolidation-20261101/indexing.log",
+      "bytes": 480,
+      "sha256": "2b5e1c92e757baa4641ba6d4c4dd262a5ef2c0c9000a06173ea178029856de2d"
+    },
+    {
+      "path": "runs/hd6850-minimal-v1-consolidation-20261101/inference-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-minimal-v1-consolidation-20261101/inference.json",
+      "bytes": 312458,
+      "sha256": "61a06de1a919ce6cdbf879257805fa763129059287d167d2d875e886928170a4"
+    },
+    {
+      "path": "runs/hd6850-minimal-v1-consolidation-20261101/inference.log",
+      "bytes": 2017,
+      "sha256": "4b8c876b7a7c146f1e7a321fe8b66f8418194cd37211e223785b185f5bc8ff54"
+    },
+    {
+      "path": "runs/hd6850-minimal-v1-consolidation-20261101/launcher-host-checks.json",
+      "bytes": 799,
+      "sha256": "0780d8559f383fccfbe44bcd57fc2028ccd001a609ca5036c87d50a8acaaf24f"
+    },
+    {
+      "path": "runs/hd6850-minimal-v1-consolidation-20261101/lifetimes-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-minimal-v1-consolidation-20261101/lifetimes.log",
+      "bytes": 884,
+      "sha256": "96c006f763c63af9bdb03b60fbb009b9ae33b272f839e6bc316f3b0a8e9d3fa6"
+    },
+    {
+      "path": "runs/hd6850-minimal-v1-consolidation-20261101/model-cpu-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-minimal-v1-consolidation-20261101/model-cpu.log",
+      "bytes": 7370,
+      "sha256": "37033eeb62785bdc7651cd49d788be0306aab82a8051ca05b20e7c331d1d9eb9"
+    },
+    {
+      "path": "runs/hd6850-minimal-v1-consolidation-20261101/offsets-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-minimal-v1-consolidation-20261101/offsets.log",
+      "bytes": 465,
+      "sha256": "c7a7dffe923e8ca490bdf35b4340c54f9d68386b2282ca9e0ee4de44bf5dfb19"
+    },
+    {
+      "path": "runs/hd6850-minimal-v1-consolidation-20261101/pool-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-minimal-v1-consolidation-20261101/pool.log",
+      "bytes": 1300,
+      "sha256": "60a91c6e71b18fe717549e1cc9964cc2390050bf27278abb4fd980160644f68a"
+    },
+    {
+      "path": "runs/hd6850-minimal-v1-consolidation-20261101/scatter-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-minimal-v1-consolidation-20261101/scatter.log",
+      "bytes": 334,
+      "sha256": "b925187e5315bc0d5ae552d2950d3d8bbdfba8c8e3e41f5c2ba7d17adf1fee08"
+    },
+    {
+      "path": "runs/hd6850-minimal-v1-consolidation-20261101/source-manifest.json",
+      "bytes": 777,
+      "sha256": "1c915c7641883fb3a73a3066cccc73ae68549402abd20e18707ed296fcd6ec8c"
+    },
+    {
+      "path": "runs/hd6850-minimal-v1-consolidation-20261101/sparse200-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-minimal-v1-consolidation-20261101/sparse200.log",
+      "bytes": 346,
+      "sha256": "f0ddf52064339ea6d3f4981e5897996ce64e6646872147add1a359937e91f701"
+    },
+    {
+      "path": "runs/hd6850-minimal-v1-consolidation-20261101/status.json",
+      "bytes": 162,
+      "sha256": "b3ea838d99750c277396f5265b0566b190928d73c767118810d775e08dd17541"
+    },
+    {
+      "path": "runs/hd6850-minimal-v1-consolidation-20261101/summary.json",
+      "bytes": 763,
+      "sha256": "65a4018d4cfa00024e4ef848366a32a890b4eadb74eb212dbcce9f174e198cc7"
+    },
+    {
+      "path": "runs/hd6850-minimal-v1-consolidation-20261101/topk-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-minimal-v1-consolidation-20261101/topk.log",
+      "bytes": 331,
+      "sha256": "540c680bd85f4688b828904adb842f5254b0fb4e647926990951b8a70a004ec5"
+    },
+    {
+      "path": "runs/hd6850-minimal-v1-consolidation-20261101/trials.json",
+      "bytes": 8197,
+      "sha256": "cb0f902d5a9f23e35796d8e28e79bf085ba5f1c92248b9e91eea5edbc10ab309"
+    },
+    {
+      "path": "runs/hd6850-wg128-native-stability20-20261101/config.json",
+      "bytes": 1035,
+      "sha256": "7aa52080995e03137db487f6ee218ee98df811df0f5364ff57c2c1aa64b21bce"
+    },
+    {
+      "path": "runs/hd6850-wg128-native-stability20-20261101/kernel-live.log",
+      "bytes": 139373,
+      "sha256": "68168680b16fa2cd1fdd2fb15afcf729143b9541c9c235ede6bbcfb3dcdf3922"
+    },
+    {
+      "path": "runs/hd6850-wg128-native-stability20-20261101/launch.py",
+      "bytes": 523,
+      "sha256": "daeba5ae91e5b4328cfc1297f74f584fff7289319f87cb3a5bff6aa24bc94b18"
+    },
+    {
+      "path": "runs/hd6850-wg128-native-stability20-20261101/opencl-memory.jsonl",
+      "bytes": 2801,
+      "sha256": "966e4589f5d943d706393d444eba66fc5d1744f33d0cebc2e7c4cde79d440c70"
+    },
+    {
+      "path": "runs/hd6850-wg128-native-stability20-20261101/radeontop-stderr.log",
+      "bytes": 112,
+      "sha256": "5081bed6252a20d5ecd6c5e799f251ac56f876b501b063a2525f72dcc6d3651e"
+    },
+    {
+      "path": "runs/hd6850-wg128-native-stability20-20261101/radeontop.log",
+      "bytes": 1241069,
+      "sha256": "3b28bae14b3d338c9e3a3b1c689c3efc3cbeaec24080a00a2a2ca52427f708f7"
+    },
+    {
+      "path": "runs/hd6850-wg128-native-stability20-20261101/startup.json",
+      "bytes": 678,
+      "sha256": "79c3e807da7b2cccb9dcf6eb88b44b139f3d3034415571618f958e30997b28b2"
+    },
+    {
+      "path": "runs/hd6850-wg128-native-stability20-20261101/status.json",
+      "bytes": 937,
+      "sha256": "ddb8149b0847456950b047fbcebba9adafee78e1cec0a5250e2355d076a32967"
+    },
+    {
+      "path": "runs/hd6850-wg128-native-stability20-20261101/stop-request.json",
+      "bytes": 190,
+      "sha256": "6114ab644208ec26a4fd2d146090feae5e3488c38352fd1ec3528e175a4f92e3"
+    },
+    {
+      "path": "runs/hd6850-wg128-native-stability20-20261101/summary.json",
+      "bytes": 360,
+      "sha256": "09a78d3ca2bddc72842ab46431c2da80e9ea3e661624a896aac076a44ebd828a"
+    },
+    {
+      "path": "runs/hd6850-wg128-native-stability20-20261101/supervisor.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-wg128-native-stability20-20261101/training-timing.jsonl",
+      "bytes": 2134,
+      "sha256": "ecf38b71a0083574b1b4eb4dfdd742297f1387e75f27e28ce5d30671a36f341f"
+    },
+    {
+      "path": "runs/hd6850-wg128-native-stability20-20261101/training.log",
+      "bytes": 519335,
+      "sha256": "794c0a970ae54d208efbe73903a0bae391a63fd142f6367a06fe8455669e3e79"
+    },
+    {
+      "path": "runs/hd6850-winograd-splitk-revisit-20261101/assessment.json",
+      "bytes": 4944,
+      "sha256": "36bcde4a18aa2892cadf4e43f0e6b3be95a63aeccce92d6d411585441239da6f"
+    },
+    {
+      "path": "runs/hd6850-winograd-splitk-revisit-20261101/control-cpu-comparisons.json",
+      "bytes": 652,
+      "sha256": "33f1c8e7beacef284668f3f4fc83d3fed5027724c15c329535a59ad0447ba330"
+    },
+    {
+      "path": "runs/hd6850-winograd-splitk-revisit-20261101/control-cpu-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-winograd-splitk-revisit-20261101/control-cpu.log",
+      "bytes": 7341,
+      "sha256": "a61985a4a4fc04c20a61f2f2de20e55e8613a3f8ac53599809a50651cf887d3f"
+    },
+    {
+      "path": "runs/hd6850-winograd-splitk-revisit-20261101/control-focused-kernel.log",
+      "bytes": 4124,
+      "sha256": "3b37c098e93599953bec638c839c7369ac6250f1c237a7d91e0a625e256540a9"
+    },
+    {
+      "path": "runs/hd6850-winograd-splitk-revisit-20261101/control-focused.log",
+      "bytes": 4850,
+      "sha256": "7e62db45ab814d9c065febc4749d258bc100f301706c269127fcf92d22556254"
+    },
+    {
+      "path": "runs/hd6850-winograd-splitk-revisit-20261101/controller.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-winograd-splitk-revisit-20261101/controller.py",
+      "bytes": 4536,
+      "sha256": "706dec89c9c22f1355405a5594154845093c24bd74b7b29b7abc861fd277f88a"
+    },
+    {
+      "path": "runs/hd6850-winograd-splitk-revisit-20261101/dispatch.c",
+      "bytes": 770,
+      "sha256": "961fd7a6dfa15088bc15734a009a7d37390ea48825e65777b7f794b6a5b6f854"
+    },
+    {
+      "path": "runs/hd6850-winograd-splitk-revisit-20261101/focused.py",
+      "bytes": 4447,
+      "sha256": "71bc092132d48eb01d88b90d36ff723c60e92566b16e50e45c65ca250c914a75"
+    },
+    {
+      "path": "runs/hd6850-winograd-splitk-revisit-20261101/r1-control-allocator.json",
+      "bytes": 794,
+      "sha256": "59d2da3371325f32e93a2aa9cb7363d4175a61db450a7d7374a3357f09ff7e5b"
+    },
+    {
+      "path": "runs/hd6850-winograd-splitk-revisit-20261101/r1-control-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-winograd-splitk-revisit-20261101/r1-control.log",
+      "bytes": 26482,
+      "sha256": "ad34d1fa27ca341a41b388e998d9b2f6c4893cb94defb474a982200d85925c85"
+    },
+    {
+      "path": "runs/hd6850-winograd-splitk-revisit-20261101/r2-control-allocator.json",
+      "bytes": 795,
+      "sha256": "d5a35a5ab69ae9b9f3cb672d5b97b2a04d2a228ea0b24d7a69bc3929bd6dc735"
+    },
+    {
+      "path": "runs/hd6850-winograd-splitk-revisit-20261101/r2-control-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-winograd-splitk-revisit-20261101/r2-control.log",
+      "bytes": 26482,
+      "sha256": "9acf0de32e83863bcdf7068c9cf94734adb5a37e551b99195ab099c949263bfe"
+    },
+    {
+      "path": "runs/hd6850-winograd-splitk-revisit-20261101/splitk-focused-kernel.log",
+      "bytes": 3848,
+      "sha256": "ca0f3a9fc3f28a45e3bf2482b019a9863ddaba225a3030dd92770834518d38de"
+    },
+    {
+      "path": "runs/hd6850-winograd-splitk-revisit-20261101/splitk-focused.log",
+      "bytes": 5323,
+      "sha256": "024a59bd87895566bb0b19371a4f706c78bc1c7c438633c5879e687b14475bac"
+    },
+    {
+      "path": "runs/hd6850-winograd-splitk-revisit-20261101/status.json",
+      "bytes": 168,
+      "sha256": "25a16226b3d9987a52d4983bfd760c049502e233bb6bc11d72a28e76f1b2e2e7"
+    },
+    {
+      "path": "runs/hd6850-winograd-splitk-revisit-20261101/summary.json",
+      "bytes": 598,
+      "sha256": "5d1b4119e49a52445b7816046e862e8e85ecb864c59776f42ee41104205ec365"
+    },
+    {
+      "path": "runs/hd6850-winograd-splitk-revisit-20261101/trials.json",
+      "bytes": 8008,
+      "sha256": "c96d0e7bd507b2f7421e418b54a673e371c69d0ac283c9d8ed9451b65be0f92b"
+    },
+    {
+      "path": "runs/hd6850-winograd-splitk-revisit-20261101/winograd-focused-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-winograd-splitk-revisit-20261101/winograd-focused.log",
+      "bytes": 2466,
+      "sha256": "7dcb08b8e1ee7927e7ca64e255bcfa938daec7a2f3e22aa8930c33eade42986e"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/auto128.c",
+      "bytes": 1534,
+      "sha256": "7ea435afe1b58dc34329ee4db7f13e84ac64e0e26296e1e6b3ab57b29010121e"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/auto256.c",
+      "bytes": 1534,
+      "sha256": "4e7aa4a4cada7a810fa7c34e4ace3bb66c56c3e7c7d3030a5772734a58fe96e3"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/auto32.c",
+      "bytes": 1532,
+      "sha256": "e965d7b32e61b9eec66fb058f1673ae4fd00431e6a20efc67d301eec6b0c1475"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/auto64.c",
+      "bytes": 1532,
+      "sha256": "11ae8655bc72006d7857d0a61b9253e0c39e7beba4780fc8da5511a80268fb29"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/bn-check.py",
+      "bytes": 1849,
+      "sha256": "31b91c4453067094885c751da8f87ca417e9359b9b2b950a78ac4d18c1e1b4ab"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/bn128-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/bn128.log",
+      "bytes": 1094,
+      "sha256": "459cc5120f0dc6f658b7d2721edccb81d85668de5f17f7cb7a53cac01895af5f"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/bn256-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/bn256.log",
+      "bytes": 1094,
+      "sha256": "459cc5120f0dc6f658b7d2721edccb81d85668de5f17f7cb7a53cac01895af5f"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/bn64-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/bn64.log",
+      "bytes": 1094,
+      "sha256": "459cc5120f0dc6f658b7d2721edccb81d85668de5f17f7cb7a53cac01895af5f"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/bytes-auto128-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/bytes-auto128.log",
+      "bytes": 763,
+      "sha256": "8c17679c585504d8e2bec96ee5a7c823026bbafc9b239010fbf63a662d327d42"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/bytes-auto256-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/bytes-auto256.log",
+      "bytes": 763,
+      "sha256": "630446a90b92b53f552f87a68060b3edf57a7e52f99308e95b62e3272d7318be"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/bytes-auto32-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/bytes-auto32.log",
+      "bytes": 762,
+      "sha256": "dba5834f78ab942de8cf61a022b3cbe0fed54759002dc17363c8718eb3ec0424"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/bytes-auto64-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/bytes-auto64.log",
+      "bytes": 762,
+      "sha256": "61125764f643d1ab5eb30b61a353a8c841d58d1c0e43207de141f35613f26b17"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/bytes-packed0-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/bytes-packed0.log",
+      "bytes": 758,
+      "sha256": "31cef8c22568340d8e0c43a4bd5a0358ddee474efd925fd3b18fa6450565b77d"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/bytes-packed1-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/bytes-packed1.log",
+      "bytes": 758,
+      "sha256": "31cef8c22568340d8e0c43a4bd5a0358ddee474efd925fd3b18fa6450565b77d"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/check_byte_outputs.py",
+      "bytes": 2361,
+      "sha256": "42170968e442a69e289e5f770f25ff3d778742a05b2b4b2f1c1aebe0a18284c6"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/controller.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/controller.py",
+      "bytes": 4411,
+      "sha256": "c6d13a66ba66740517e62e2b633329c59dcdcf0a813b794c88fc2e055710cbc2"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/copy-auto128-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/copy-auto128.log",
+      "bytes": 974,
+      "sha256": "e058fc2e301b5ebcbca19634b43c5a0abcdb5e5d8dc1f8e7c78c949acbedae72"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/copy-auto256-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/copy-auto256.log",
+      "bytes": 974,
+      "sha256": "da99695d2d0fc79b319701b15951e46517449744b057b700c7520d5b12860371"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/copy-auto32-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/copy-auto32.log",
+      "bytes": 973,
+      "sha256": "6eb5d900678d529c0a5c9344d17fd51e5fbb9a6b0c92911ccb887055847e5e4e"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/copy-auto64-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/copy-auto64.log",
+      "bytes": 973,
+      "sha256": "e1827be66c7b45ff1b04d811209e483d6866475c8605363e4ce8b84a4d532f4a"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/metadata.json",
+      "bytes": 296,
+      "sha256": "5421b43d90ea592490ea26b3c972c1a8d216980b34df232df188203d5d403432"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/native-b-allocator.json",
+      "bytes": 793,
+      "sha256": "7b89121de57886a92c96e0777966903055c1429d66ff40de99a8d1e67ae96888"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/native-b-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/native-b.log",
+      "bytes": 14241,
+      "sha256": "3003e6b2ff3416e07d81778d9b5f34836b0ba8df3cc7ab3e6007f7af8d0dcd76"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/native-cpu-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/native-cpu.log",
+      "bytes": 7335,
+      "sha256": "0bd1690a8b7b781ccddcc17d6e417b8b994668501bdaf32f25f706bc16dd2ce0"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/packed-a-allocator.json",
+      "bytes": 793,
+      "sha256": "fbc93ed0cd1ed5d31f83bd480a193a5ab0acf057d11d82629b77cab03e5c46d0"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/packed-a-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/packed-a.log",
+      "bytes": 14241,
+      "sha256": "9cba083269aa1f48c319b0228493a57b350b38446d0038a67e9640fdbc820458"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/packed-c-allocator.json",
+      "bytes": 793,
+      "sha256": "7ab3ecf3e876f9573be64ce44e5a89ff3dad9de44e53dfee8347ea12d8a9f1c7"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/packed-c-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/packed-c.log",
+      "bytes": 14241,
+      "sha256": "a2323c92d286e73f581322647dc2fe3f1423b5feae4ea9b2289dd07856511409"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/scatter-packed0-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/scatter-packed0.log",
+      "bytes": 333,
+      "sha256": "3e1d882bb1491986fe8bce61602bb7c34610485f8d411fafd6806c344406c8c0"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/scatter-packed1-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/scatter-packed1.log",
+      "bytes": 333,
+      "sha256": "3e1d882bb1491986fe8bce61602bb7c34610485f8d411fafd6806c344406c8c0"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/status.json",
+      "bytes": 215,
+      "sha256": "4921f869383ff9d40e56b8b175c46c7d24808c6cd371488a3990b7febf7dcf1a"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/summary.json",
+      "bytes": 456,
+      "sha256": "bb5f4b0a8866296659d948aecadb72fb16dc74e032e2182cda03d492e4b2b04f"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/topk-focused-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/topk-focused.log",
+      "bytes": 330,
+      "sha256": "4ae6cdcbca19ac03ce82db40b76fd64de0ad35810ecf348264cf2b966517d234"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/topk-general-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/topk-general.json",
+      "bytes": 573,
+      "sha256": "3865e19b69d611778d10987057f8d3872598679ff5267d2c04bffb29a6068466"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/topk-general.log",
+      "bytes": 1056,
+      "sha256": "047ea9978cf75e8dc791433384273529690d9adbeccf6d37568b72bd3bd589e4"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/training-results.json",
+      "bytes": 3290,
+      "sha256": "2edbe739dd178f2f4fe20ee5591e6da93bc5aa1b88c4769ab36d1b8c440e2392"
+    },
+    {
+      "path": "runs/hd6850-workaround-revisit-20261101/trials.json",
+      "bytes": 18083,
+      "sha256": "a1e634979c8f00f5289cd13b97d8519cb68f177f69979556555af377e35077a3"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/controller.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/controller.py",
+      "bytes": 4740,
+      "sha256": "3891f82c5430873f37372de509989d544f98ab9e67b8fc0c60edcb70106ec0ac"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/cpu-wg128-packed0-comparisons.json",
+      "bytes": 652,
+      "sha256": "33f1c8e7beacef284668f3f4fc83d3fed5027724c15c329535a59ad0447ba330"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/cpu-wg128-packed0-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/cpu-wg128-packed0.log",
+      "bytes": 7356,
+      "sha256": "88337cb4f40da5357d4d975a657275ed9b5c14c9d82a1bdc898a71494d0647dc"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/cpu-wg128-packed1-comparisons.json",
+      "bytes": 652,
+      "sha256": "33f1c8e7beacef284668f3f4fc83d3fed5027724c15c329535a59ad0447ba330"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/cpu-wg128-packed1-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/cpu-wg128-packed1.log",
+      "bytes": 7356,
+      "sha256": "b8fb471dfb4bf277a0512c917c0f11b53408875c9248852a4427a530db57e874"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/cpu-wg256-packed0-comparisons.json",
+      "bytes": 643,
+      "sha256": "a7c7ce0318ccfe3be5b218a855bdbc7e18fd8316b6f2164750edb6937b72388f"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/cpu-wg256-packed0-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/cpu-wg256-packed0.log",
+      "bytes": 7347,
+      "sha256": "869f4c83c85d129fe9f262ad0bcecdc435bebb58f1ae591440f583a6ecf853d1"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/cpu-wg256-packed1-comparisons.json",
+      "bytes": 643,
+      "sha256": "a7c7ce0318ccfe3be5b218a855bdbc7e18fd8316b6f2164750edb6937b72388f"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/cpu-wg256-packed1-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/cpu-wg256-packed1.log",
+      "bytes": 7347,
+      "sha256": "672331e140a304c910f9f1b4772321e4e531d575b2730b10660f169986a9090c"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/cpu-wg32-packed0-comparisons.json",
+      "bytes": 651,
+      "sha256": "959dd6d44a7d75df9345f5f213df0411f41db7623796a3a543143ef11fec97fa"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/cpu-wg32-packed0-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/cpu-wg32-packed0.log",
+      "bytes": 7351,
+      "sha256": "bcb918671398f911920ab1771554410ded88d9dd6d257a163a39e8e553357ec1"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/cpu-wg32-packed1-comparisons.json",
+      "bytes": 651,
+      "sha256": "959dd6d44a7d75df9345f5f213df0411f41db7623796a3a543143ef11fec97fa"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/cpu-wg32-packed1-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/cpu-wg32-packed1.log",
+      "bytes": 7351,
+      "sha256": "f31198c68fcec9fba7a13bb18cf3dd8a78d4b5defeab87b4661961038a7d7a79"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/plan.json",
+      "bytes": 937,
+      "sha256": "ba58fba943faad2d87a08b63b6e9e7522f3bc8c9e7e904ca3fb4b3d13f3026a1"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/r1-wg128-packed0-allocator.json",
+      "bytes": 794,
+      "sha256": "bc9b1f6e7465b1c81fa02324799e346041d6832843cb033ff4d531241fe71e24"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/r1-wg128-packed0-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/r1-wg128-packed0.log",
+      "bytes": 26497,
+      "sha256": "14b59eb5c6aada7159501a44d84fe3baec65378817d014fc78bab8b4bd3b0aa4"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/r1-wg128-packed1-allocator.json",
+      "bytes": 796,
+      "sha256": "79c90b470bd1dcf758da578c2efe5739a9e082e44500aa1c6764ebe2c1b22c8f"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/r1-wg128-packed1-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/r1-wg128-packed1.log",
+      "bytes": 26497,
+      "sha256": "da418c2ed789ac457769c395d609471c00ed00c1b9923d214c579bb7c9552a6a"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/r1-wg256-packed0-allocator.json",
+      "bytes": 796,
+      "sha256": "854c61f6ca78e30d7070dd81ff663ce6050d53f0775aaad4b01a6098e711d70f"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/r1-wg256-packed0-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/r1-wg256-packed0.log",
+      "bytes": 26496,
+      "sha256": "230024e54063ef0df2362330bd686d553dcfc20c70035aae96df30da9b97c679"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/r1-wg256-packed1-allocator.json",
+      "bytes": 795,
+      "sha256": "f889c398698a1723fbd06b5b8841c2cf89bce6aa4ede02412eb23e73001989f3"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/r1-wg256-packed1-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/r1-wg256-packed1.log",
+      "bytes": 26497,
+      "sha256": "79e29b2941c5c5e8832860b2d7663c26fc1beb03128d0fb0c1dbf1d1ea2854ce"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/r1-wg32-packed0-allocator.json",
+      "bytes": 796,
+      "sha256": "a947fd9d7c313253e122e9472325c3fb5ffa2feda4e9cf720c7dd98d0bf01fd3"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/r1-wg32-packed0-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/r1-wg32-packed0.log",
+      "bytes": 26492,
+      "sha256": "4729dc34e1a201e953a483e0cb864605d9edf06507b4b818c50a45cec3158b20"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/r1-wg32-packed1-allocator.json",
+      "bytes": 796,
+      "sha256": "04a59e958c0391a60ff78d896aa761f8c5fa54969535a1781cefc7c87b777c66"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/r1-wg32-packed1-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/r1-wg32-packed1.log",
+      "bytes": 26493,
+      "sha256": "8d1b968b19f63352ad6e3dc4ba61ae6d4757e889ae1af436b9123a2e656dfd13"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/r2-wg128-packed0-allocator.json",
+      "bytes": 796,
+      "sha256": "bf10ebfd1dadafdae75ceb93179df9c0535288e3c1323920fb7b0381a92bad93"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/r2-wg128-packed0-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/r2-wg128-packed0.log",
+      "bytes": 26497,
+      "sha256": "8ccf9390238874bff70ccffb357eda6258e6220445c66890e2a0231c0a95f0d6"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/r2-wg128-packed1-allocator.json",
+      "bytes": 796,
+      "sha256": "0e9b82dca9f4f9548859e3b4c686d2f18afceb0a5621d55357a470dce408a318"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/r2-wg128-packed1-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/r2-wg128-packed1.log",
+      "bytes": 26496,
+      "sha256": "1c42396e6f053f1846c05c8a585a7a79d569c060e4765db6781e17b980b15a07"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/r2-wg256-packed0-allocator.json",
+      "bytes": 795,
+      "sha256": "507b59200e643e98d7fe23f9ae8739a584b0a4d102c9d859cb11461d51a801dd"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/r2-wg256-packed0-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/r2-wg256-packed0.log",
+      "bytes": 26497,
+      "sha256": "3e1627ef2f597a1dcf8ab8de97ee0eb5f6e7abb0bc50300f38d59f4d58837eda"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/r2-wg256-packed1-allocator.json",
+      "bytes": 796,
+      "sha256": "fcbcff5148caf64aada47c0d214bffc7eeb142b15cc326628293bfba1e3dc5c0"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/r2-wg256-packed1-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/r2-wg256-packed1.log",
+      "bytes": 26496,
+      "sha256": "07f147eda55774813c7cd02e4b2bae171eefbd9c7cf94661acb3389dcee2537f"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/r2-wg32-packed0-allocator.json",
+      "bytes": 796,
+      "sha256": "5936a5418649a1f5fa87fccd1c99c024254341baa60f9561e2a8d57fcb7d8563"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/r2-wg32-packed0-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/r2-wg32-packed0.log",
+      "bytes": 26492,
+      "sha256": "9e20b83b90a482abf38f5e7d0659cae83cf2981291d79c1307dc41c9312586f8"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/r2-wg32-packed1-allocator.json",
+      "bytes": 796,
+      "sha256": "123cb2073c47702e3115568b6ee0905db2c4eeee73b6d57a3ab59fd62e1ad406"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/r2-wg32-packed1-kernel.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/r2-wg32-packed1.log",
+      "bytes": 26493,
+      "sha256": "c3acf15ca39f671cbbbdaaf022c67227dbf9e6fc76e770b3c2dc526661c6f8d4"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/status.json",
+      "bytes": 168,
+      "sha256": "51c22b9bb6f18cacffe3bb8b59ccec9d0a850406e136b44f2183f63a327dbacb"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/summary.json",
+      "bytes": 1603,
+      "sha256": "18a3313dd649927c8b93175dc60386f3bf8ca42ea92df0a3942d05215cd92387"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/training-results.json",
+      "bytes": 13465,
+      "sha256": "4e86c9b0bff6ff84ed55e6ef03539900e37323ad349e6260e4c4a774c929b332"
+    },
+    {
+      "path": "runs/hd6850-workgroup-conversion-opt-20261101/trials.json",
+      "bytes": 23967,
+      "sha256": "132d253a857b6a7a602970636a824c0a00b0c442671630c0b1653d2a7be6e932"
+    }
+  ]
+}
