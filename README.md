@@ -6,6 +6,51 @@ Radeon development fork: see the [verified five-card baseline](docs/RADEON_MINIM
 The upstream network/device results below are retained as upstream documentation;
 they are not a validation matrix for this fork's new r600 paths.
 
+## Giving old Radeon GPUs a second life
+
+This project makes older AMD Radeon cards usable for modern PyTorch workloads through OpenCL. It builds on **DLPrimitives and pytorch_dlprim**, with fixes and optimizations across the Torch backend and Mesa’s Clover and Rusticl paths.
+
+The goal is practical: let people experiment with machine learning using hardware they already own. A retired gaming card can become a training device, a wildlife detector, or a way to learn how neural networks work.
+
+### What works today
+
+We’ve trained and run a YOLOv8 nano wildlife detector on Radeon cards ranging from the **HD5870 to the HD7970 and R9 270**. Work included fixing incorrect GPU results, buffer lifetime problems, allocation failures and driver/compiler issues, then improving convolution, reductions, indexing, optimizer updates and synchronization.
+
+At **256×256 FP32**, our completed runs achieved:
+
+| GPU | VRAM | OpenCL path | Training batch | Training images/s | Detection FPS |
+|---|---:|---|---:|---:|---:|
+| HD5870 | 1 GB | Clover | 24 | 13.02 | 17.40 |
+| HD6850 | 1 GB | Clover | 24 | 8.83 | 14.73 |
+| HD6970 | 2 GB | Clover | 28 | 14.30 | 15.28 |
+| R9 270 | 2 GB | Rusticl | 48 | 21.68 | 32.40 |
+| HD7970 | 3 GB | Rusticl | 80 | 29.69 | 27.87 |
+
+These measurements use a **Phenom II X4 with 16 GB RAM**. Detection uses batch one and includes preprocessing and CPU NMS. Every listed configuration completed a sustained training run: 20 epochs for the HD5870, HD6850, HD6970 and R9 270, and 10 epochs for the HD7970 Rusticl result. Training throughput excludes validation and checkpoint writing. These are results for the tested configurations, not matched measurements of hardware efficiency.
+
+The [consolidated Clover baseline](docs/RADEON_MINIMAL_BASELINE.md) records the earlier five-card verification; the GCN Rusticl figures above are subsequent measurements using the private Mesa 25 radeonsi/ACO runtime and the same frozen backend. They require that runtime and the GCN allocator settings (no allocation cache, tight allocation, deferred release, queue limit 128 and retirement budget 64 MiB); the older Rusticl runtime is not equivalent. See the [GCN launcher](tools/with-radeon-gcn-baseline.sh) for the backend settings.
+
+**Memory remains a constraint.** These cards have only 1–3 GB of VRAM, and the legacy OpenCL path has allocation limitations that can prevent training from using all available memory. The legacy Clover configurations use tested memory reservations to improve reliability. Listed batch sizes are verified working settings, rather than universal maximums; larger images and models require smaller batches.
+
+### Who it’s for
+
+- **Students and curious builders** learning PyTorch without buying a new GPU.
+- **People reusing old PCs**, particularly where modern hardware is expensive or difficult to obtain.
+- **Hobbyists building vision projects** such as wildlife cameras, feeder monitors and small automation systems.
+- **Open source developers** interested in improving support for overlooked hardware.
+
+Support is currently demonstrated for specific detection workloads and configurations. This is an experimental backend, and broader model compatibility remains work in progress.
+
+### How it started
+
+The original motivation was a small computer vision project and became an opportunity to experiment with older hardware.
+
+Along the way, it became a demonstration that decade-old GPUs still have useful work left in them.
+
+**Old hardware, modern tools, and a reason to keep learning.**
+
+## Upstream project documentation
+
 DLPrimitives-OpenCL out of tree backend for pytorch
 
 It is only beginning, but you can train some vision nets using OpenCL devices.
