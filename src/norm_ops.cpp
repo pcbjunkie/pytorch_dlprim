@@ -4,8 +4,10 @@
 #include <dlprim/core/util.hpp>
 #include <dlprim/core/pointwise.hpp>
 #include <dlprim/core/bn.hpp>
+#include <dlprim/gpu/program_cache.hpp>
 
 #include <iostream>
+#include <limits>
 namespace ptdlprim {
 
 using namespace torch;
@@ -16,7 +18,7 @@ using torch::autograd::AutogradContext;
 using c10::Device;
 using c10::DeviceType;
     // {"schema": "aten::native_batch_norm(Tensor input, Tensor? weight, Tensor? bias, Tensor? running_mean, Tensor? running_var, bool training, float momentum, float eps) -> (Tensor, Tensor, Tensor)", "dispatch": "True", "default": "False"}
-    ::std::tuple<Tensor,Tensor,Tensor> native_batch_norm(const Tensor & input, const c10::optional<Tensor> & weight, const c10::optional<Tensor> & bias, const c10::optional<Tensor> & running_mean, const c10::optional<Tensor> & running_var, bool training, double momentum, double eps)
+    static std::tuple<Tensor,Tensor,Tensor> batch_norm_forward(const Tensor & input, const c10::optional<Tensor> & weight, const c10::optional<Tensor> & bias, const c10::optional<Tensor> & running_mean, const c10::optional<Tensor> & running_var, bool training, double momentum, double eps,Tensor *saved_a=nullptr,Tensor *saved_b=nullptr)
     {
         GUARD;
         bool weight_present = weight && weight->numel()>0; 
@@ -75,12 +77,76 @@ using c10::DeviceType;
             fwd_var  = var;
         }
         if(affine) {
-            bn->enqueue_forward_affine(X,Y,gamma,beta,fwd_mean,fwd_var,eps,ws,q);
+            dlprim::Tensor a,b;
+            if(saved_a) {
+                *saved_a=new_tensor_as(mean.shape(),input);
+                *saved_b=new_tensor_as(mean.shape(),input);
+                a=todp(*saved_a);
+                b=todp(*saved_b);
+            }
+            bn->enqueue_forward_affine(X,Y,gamma,beta,fwd_mean,fwd_var,eps,ws,q,
+                                       saved_a ? &a : nullptr,saved_b ? &b : nullptr);
         }
         else {
             bn->enqueue_forward_direct(X,Y,fwd_mean,fwd_var,eps,ws,q);
         }
         return std::tuple<Tensor,Tensor,Tensor>(result,calc_mean_pt,calc_var_pt);
+    }
+
+    ::std::tuple<Tensor,Tensor,Tensor> native_batch_norm(const Tensor & input, const c10::optional<Tensor> & weight, const c10::optional<Tensor> & bias, const c10::optional<Tensor> & running_mean, const c10::optional<Tensor> & running_var, bool training, double momentum, double eps)
+    {
+        return batch_norm_forward(input,weight,bias,running_mean,running_var,training,momentum,eps);
+    }
+
+    std::tuple<Tensor,Tensor,Tensor,Tensor,Tensor> bn_silu_training(
+        const Tensor &input,const Tensor &weight,const Tensor &bias,
+        const Tensor &running_mean,const Tensor &running_var,double momentum,double eps)
+    {
+        TORCH_CHECK(input.device().type()==OpenCLDeviceType && input.scalar_type()==kFloat &&
+                    input.dim()==4 && input.numel()>0 &&
+                    input.numel()<=std::numeric_limits<int>::max(),
+                    "Expected nonempty FP32 OpenCL NCHW input");
+        const int64_t channels=input.size(1);
+        TORCH_CHECK(input.numel()/channels>1,"BN training needs more than one value per channel");
+        for(auto *value:{&weight,&bias,&running_mean,&running_var}) {
+            TORCH_CHECK(value->device()==input.device() && value->scalar_type()==kFloat &&
+                        value->dim()==1 && value->size(0)==channels && value->is_contiguous(),
+                        "Expected contiguous FP32 BN parameters and statistics on the input device");
+        }
+        Tensor a,b;
+        auto [output,mean,var]=batch_norm_forward(input,weight,bias,running_mean,running_var,true,momentum,eps,&a,&b);
+        return {output,mean,var,a,b};
+    }
+
+    Tensor bn_silu_recompute_grad(const Tensor &input,const Tensor &grad,const Tensor &a,const Tensor &b)
+    {
+        GUARD;
+        TORCH_CHECK(input.device().type()==OpenCLDeviceType && input.dim()==4 && input.numel()>0 &&
+                    input.numel()<=std::numeric_limits<int>::max() &&
+                    input.sizes()==grad.sizes() && a.numel()==input.size(1) &&
+                    b.numel()==input.size(1) && input.scalar_type()==kFloat && grad.scalar_type()==kFloat &&
+                    a.scalar_type()==kFloat && b.scalar_type()==kFloat &&
+                    input.device()==grad.device() && input.device()==a.device() && input.device()==b.device(),
+                    "Invalid BN SiLU backward operands");
+        auto input_c=input.contiguous(),grad_c=grad.contiguous();
+        auto scale=a.contiguous(),offset=b.contiguous();
+        auto result=new_ocl_tensor(input.sizes(),input.device(),input.scalar_type());
+        auto q=getExecutionContext(input);
+        dlprim::Context ctx(q);
+        auto const &program=dlprim::gpu::Cache::instance().get_program(ctx,"bn_utils");
+        cl::Kernel kernel(program,"bn_silu_recompute_grad");
+        const int channels=input.size(1),hw=input.size(2)*input.size(3);
+        int arg=0;
+        kernel.setArg(arg++,channels);
+        kernel.setArg(arg++,hw);
+        for(auto *tensor:{&input_c,&grad_c,&scale,&offset,&result}) {
+            kernel.setArg(arg++,buffer_from_tensor(*tensor));
+            kernel.setArg(arg++,cl_ulong(tensor->storage_offset()));
+        }
+        q.queue().enqueueNDRangeKernel(kernel,cl::NullRange,
+            cl::NDRange(hw,channels,input.size(0)),cl::NullRange,q.events(),q.event("bn_silu_recompute_grad"));
+        sync_if_needed(input.device());
+        return result;
     }
 
     // {"schema": "aten::native_batch_norm_backward(Tensor grad_out, Tensor input, Tensor? weight, Tensor? running_mean, Tensor? running_var, Tensor? save_mean, Tensor? save_invstd, bool train, float eps, bool[3] output_mask) -> (Tensor, Tensor, Tensor)", "dispatch": "True", "default": "False"} 
@@ -101,7 +167,9 @@ using c10::DeviceType;
         dlprim::ExecutionContext q=getExecutionContext(input);
         dlprim::Context ctx(q);
 
-        dlprim::Tensor dY = todp(grad_out);
+        // Autograd may supply a strided view, for example after a channel split.
+        Tensor grad_out_contiguous = grad_out.contiguous();
+        dlprim::Tensor dY = todp(grad_out_contiguous);
         dlprim::Tensor X = todp(input);
         dlprim::Tensor W;
         if(weight_present)
@@ -358,3 +426,16 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
       m.impl("aten::native_layer_norm_backward",&ptdlprim::native_layer_norm_backward);
 }
 
+
+TORCH_LIBRARY_FRAGMENT(pytorch_ocl,m) {
+    m.def("bn_silu_training(Tensor input, Tensor weight, Tensor bias, Tensor(a!) running_mean, Tensor(b!) running_var, float momentum, float eps) -> (Tensor, Tensor, Tensor, Tensor, Tensor)");
+    m.def("bn_silu_recompute_grad(Tensor input, Tensor grad, Tensor a, Tensor b) -> Tensor");
+}
+TORCH_LIBRARY_IMPL(pytorch_ocl,PrivateUse1,m) {
+    m.impl("bn_silu_training",&ptdlprim::bn_silu_training);
+    m.impl("bn_silu_recompute_grad",&ptdlprim::bn_silu_recompute_grad);
+}
+TORCH_LIBRARY_IMPL(pytorch_ocl,AutogradPrivateUse1,m) {
+    m.impl("bn_silu_training",&ptdlprim::bn_silu_training);
+    m.impl("bn_silu_recompute_grad",&ptdlprim::bn_silu_recompute_grad);
+}

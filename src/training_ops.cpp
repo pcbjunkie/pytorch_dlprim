@@ -1,11 +1,15 @@
 #include "utils.h"
 #include <ATen/MemoryOverlap.h>
+#include <ATen/ExpandUtils.h>
+#include <dlprim/core/pointwise.hpp>
 #include <map>
 #include <mutex>
 #include <sstream>
 #include <tuple>
 #include <iostream>
 #include <limits>
+#include <cstdlib>
+#include <cstring>
 namespace ptdlprim {
 using namespace at;
 static cl::Program program_for(dlprim::Context &ctx,const std::string &code) {
@@ -33,11 +37,15 @@ Tensor &addmv_gpu(const Tensor &self,const Tensor &mat,const Tensor &vec,const S
 static bool topk_parallel_lastdim(const Tensor &x,int64_t k,int64_t axis,
                                  int64_t rows,bool largest,Tensor &values,Tensor &indices)
 {
- if(axis<64 || k>32)return false;
+ if(axis<64)return false;
  auto fits=[](int64_t n){return n>=0 && uint64_t(n)<=std::numeric_limits<cl_uint>::max();};
  if(!fits(x.numel()) || !fits(x.storage_offset()) ||
     uint64_t(x.storage_offset())+uint64_t(x.numel())>std::numeric_limits<cl_uint>::max())return false;
  auto q=getExecutionContext(x);dlprim::Context ctx(q);
+ // YOLO26 selects 300 detections. The scalar reference path scans previously
+ // selected indices for every candidate (quadratic in k). Keep the old r600
+ // bound while using the parallel total-order scan for modern 64-bit devices.
+ if(k>32 && (ctx.device().getInfo<CL_DEVICE_ADDRESS_BITS>()==32 || k>512))return false;
  size_t limit=std::min(size_t(64),ctx.device().getInfo<CL_DEVICE_MAX_WORK_GROUP_SIZE>());
  limit=std::min(limit,ctx.device().getInfo<CL_DEVICE_MAX_WORK_ITEM_SIZES>()[0]);
  limit=std::min(limit,size_t(ctx.device().getInfo<CL_DEVICE_LOCAL_MEM_SIZE>()/(sizeof(cl_float)+sizeof(cl_uint))));
@@ -55,18 +63,21 @@ static bool topk_parallel_lastdim(const Tensor &x,int64_t k,int64_t axis,
      return ai<bi;
  }
  __kernel void topk_row(__global const float *x,uint xo,uint axis,uint k,
-                        int largest,uint little,__global float *values,
+                        int largest,uint little,uint span,uint parts,int remap,
+                        __global const uint2 *input_indices,__global float *values,
                         __global uint2 *indices,__local uint *scratch) {
-     uint row=get_group_id(0),lane=get_local_id(0),width=get_local_size(0);
+     uint group=get_group_id(0),lane=get_local_id(0),width=get_local_size(0);
+     uint row=group/parts, part=group%parts, start=part*span;
+     uint end=min(axis,start+span);
      // A single local argument avoids aliased dynamic-local argument regions
      // observed on radeonsi/Clover; partition it explicitly by workgroup width.
      __local float *lv=(__local float *)scratch;
      __local uint *li=scratch+width;
-     uint base=xo+row*axis,out=row*k,previous=0xffffffffu;
+     uint base=xo+row*axis,out=group*k,previous=0xffffffffu;
      float previous_value=0;
      for(uint t=0;t<k;++t) {
          uint best=0xffffffffu;float best_value=0;
-         for(uint j=lane;j<axis;j+=width) {
+         for(uint j=start+lane;j<end;j+=width) {
              float value=x[base+j];
              if(t && !topk_before(previous_value,previous,value,j,largest))continue;
              if(topk_before(value,j,best_value,best,largest)) {
@@ -84,21 +95,50 @@ static bool topk_parallel_lastdim(const Tensor &x,int64_t k,int64_t axis,
          previous=li[0];previous_value=lv[0];
          if(lane==0) {
              values[out+t]=previous_value;
-             indices[out+t]=little ? (uint2)(previous,0u) : (uint2)(0u,previous);
+             indices[out+t]=remap ? input_indices[base+previous] :
+                 (little ? (uint2)(previous,0u) : (uint2)(0u,previous));
          }
          // Every lane must consume the winner before local storage is reused.
          barrier(CLK_LOCAL_MEM_FENCE);
      }
  }
  )ocl";
- cl::Kernel kernel(program_for(ctx,source),"topk_row");
- int a=0;kernel.setArg(a++,buffer_from_tensor(x));kernel.setArg(a++,cl_uint(x.storage_offset()));
- kernel.setArg(a++,cl_uint(axis));kernel.setArg(a++,cl_uint(k));
- kernel.setArg(a++,cl_int(largest));kernel.setArg(a++,cl_uint(ctx.device().getInfo<CL_DEVICE_ENDIAN_LITTLE>()));
- kernel.setArg(a++,buffer_from_tensor(values));kernel.setArg(a++,buffer_from_tensor(indices));
- kernel.setArg(a++,cl::Local(width*(sizeof(cl_float)+sizeof(cl_uint))));
- q.queue().enqueueNDRangeKernel(kernel,cl::NullRange,cl::NDRange(size_t(rows)*width),
-                               cl::NDRange(width),q.events(),q.event("topk_parallel"));
+ auto const &program=program_for(ctx,source);
+ auto launch=[&](const Tensor &input, int64_t columns, int64_t span, int64_t parts,
+                 bool remap, const Tensor &input_indices, Tensor &out_values, Tensor &out_indices,
+                 const char *event) {
+  cl::Kernel kernel(program,"topk_row");
+  int a=0;
+  kernel.setArg(a++,buffer_from_tensor(input));
+  kernel.setArg(a++,cl_uint(input.storage_offset()));
+  kernel.setArg(a++,cl_uint(columns));
+  kernel.setArg(a++,cl_uint(k));
+  kernel.setArg(a++,cl_int(largest));
+  kernel.setArg(a++,cl_uint(ctx.device().getInfo<CL_DEVICE_ENDIAN_LITTLE>()));
+  kernel.setArg(a++,cl_uint(span));
+  kernel.setArg(a++,cl_uint(parts));
+  kernel.setArg(a++,cl_int(remap));
+  kernel.setArg(a++,buffer_from_tensor(input_indices));
+  kernel.setArg(a++,buffer_from_tensor(out_values));
+  kernel.setArg(a++,buffer_from_tensor(out_indices));
+  kernel.setArg(a++,cl::Local(width*(sizeof(cl_float)+sizeof(cl_uint))));
+  q.queue().enqueueNDRangeKernel(kernel,cl::NullRange,cl::NDRange(size_t(rows)*parts*width),
+                                cl::NDRange(width),q.events(),q.event(event));
+ };
+ const char *tile_option=std::getenv("DLPRIM_TAL_TOPK_TILED");
+ // Fixed anchor count from the 1088x1920 pyramid. Every tile contains at
+ // least k entries. Merge order preserves equal-score indices by tile order.
+ if(tile_option && std::strcmp(tile_option,"1")==0 && axis==42840 &&
+    (k==1 || k==7 || k==10) && ctx.device().getInfo<CL_DEVICE_ADDRESS_BITS>()==64) {
+  constexpr int64_t tile=256;
+  const int64_t parts=(axis+tile-1)/tile;
+  auto part_values=at::empty({rows,parts*k},x.options());
+  auto part_indices=at::empty({rows,parts*k},x.options().dtype(kLong));
+  launch(x,axis,tile,parts,false,indices,part_values,part_indices,"topk_tile");
+  launch(part_values,parts*k,parts*k,1,true,part_indices,values,indices,"topk_merge");
+ }
+ else
+  launch(x,axis,axis,1,false,indices,values,indices,"topk_parallel");
  sync_if_needed(x.device());return true;
 }
 
@@ -172,6 +212,41 @@ std::tuple<Tensor&,Tensor&> topk_gpu(const Tensor &self,int64_t k,int64_t dim,bo
  auto global=legacy?cl::NDRange(size_t(rows/inner),size_t(inner)):cl::NDRange(size_t(rows));
  q.queue().enqueueNDRangeKernel(kernel,cl::NullRange,global,cl::NullRange,q.events(),q.event("topk_select"));sync_if_needed(self.device());}
  resize_outputs(shape);values.copy_(v);indices.copy_(idx);return {values,indices};
+}
+std::tuple<Tensor&,Tensor&> max_dim_out_gpu(const Tensor &self,int64_t dim,bool keepdim,Tensor &values,Tensor &indices) {
+ GUARD;
+ TORCH_CHECK(self.scalar_type()==kFloat || self.scalar_type()==kLong || self.scalar_type()==kInt,
+             "OpenCL max.dim_max supports float32/int32/int64");
+ TORCH_CHECK(values.device()==self.device() && values.scalar_type()==self.scalar_type() &&
+             indices.device()==self.device() && indices.scalar_type()==kLong,"max output mismatch");
+ auto v=at::empty({0},self.options());
+ auto i=at::empty({0},self.options().dtype(kLong));
+ // Reuse the stable NaN/tie ordering of the GPU top-k implementation.
+ topk_gpu(self,1,dim,true,true,v,i);
+ if(!keepdim && self.dim()) {v=v.squeeze(dim);i=i.squeeze(dim);}
+ if(values.sizes()!=v.sizes())values.resize_(v.sizes());
+ if(indices.sizes()!=i.sizes())indices.resize_(i.sizes());
+ values.copy_(v);indices.copy_(i);
+ return {values,indices};
+}
+Tensor floor_divide_integral_gpu(const Tensor &self,const Tensor &other) {
+ GUARD;
+ auto integral=[](ScalarType type){return type==kInt || type==kLong;};
+ TORCH_CHECK(integral(self.scalar_type()) && integral(other.scalar_type()),
+             "OpenCL floor_divide currently supports int32/int64 inputs");
+ TORCH_CHECK(other.device().is_cpu() || other.device()==self.device(),"floor_divide device mismatch");
+ if(other.device().is_cpu()) {
+  TORCH_CHECK(other.numel()==1,"Only CPU scalar divisor is supported with an OpenCL tensor");
+  TORCH_CHECK(other.item<int64_t>()!=0,"ZeroDivisionError");
+ } else {
+  TORCH_CHECK(other.ne(0).all().item<bool>(),"ZeroDivisionError");
+ }
+ auto a=self.contiguous();auto b=other.to(self.device()).contiguous();
+ auto out=at::empty(at::infer_size(self.sizes(),other.sizes()),self.options().dtype(at::result_type(self,other)));
+ dlprim::core::pointwise_operation_broadcast({todp(a),todp(b)},{todp(out)},{},
+    "long quotient=x0/x1; long rem=x0%x1; y0=quotient-((rem!=0)&&((rem<0)!=(x1<0)));",
+    getExecutionContext(self));
+ sync_if_needed(self.device());return out;
 }
 std::tuple<Tensor,Tensor,Tensor> unique_gpu_legacy32(const Tensor &self,bool sorted,bool inverse,bool counts) {
  GUARD;
@@ -446,6 +521,8 @@ std::tuple<Tensor&,Tensor&> pool_gpu(const Tensor &self,IntArrayRef kernel,IntAr
 TORCH_LIBRARY_IMPL(aten,PrivateUse1,m) {
  m.impl("aten::addmv.out",&ptdlprim::addmv_gpu);
  m.impl("aten::topk.values",&ptdlprim::topk_gpu);
+ m.impl("aten::max.dim_max",&ptdlprim::max_dim_out_gpu);
+ m.impl("aten::floor_divide",&ptdlprim::floor_divide_integral_gpu);
  m.impl("aten::_unique2",&ptdlprim::unique_gpu);
  m.impl("aten::_index_put_impl_",&ptdlprim::index_put_gpu);
  m.impl("aten::max_pool2d_with_indices.out",&ptdlprim::pool_gpu);

@@ -1,0 +1,3344 @@
+diff --git a/include/dlprim/core/bn.hpp b/include/dlprim/core/bn.hpp
+index 5d2cfa8..63ffd5b 100644
+--- a/include/dlprim/core/bn.hpp
++++ b/include/dlprim/core/bn.hpp
+@@ -129,7 +129,8 @@ namespace core {
+                                             Tensor &gamma,Tensor &beta,
+                                             Tensor &mean,Tensor &var,
+                                             float eps,
+-                                            Tensor &ws,ExecutionContext const &e) = 0;
++                                            Tensor &ws,ExecutionContext const &e,
++                                            Tensor *saved_a=nullptr,Tensor *saved_b=nullptr) = 0;
+ 
+         ///
+         /// Perform backpropogation calculations
+diff --git a/include/dlprim/definitions.hpp b/include/dlprim/definitions.hpp
+index e03252e..defc894 100644
+--- a/include/dlprim/definitions.hpp
++++ b/include/dlprim/definitions.hpp
+@@ -281,6 +281,7 @@ namespace dlprim {
+         tanh = 2,
+         sigmoid = 3,
+         relu6 = 4,
++        silu = 5, // Forward fusion; its derivative requires the preactivation.
+ 	};
+     
+     StandardActivations activation_from_name(std::string const &name);
+diff --git a/src/activation.cpp b/src/activation.cpp
+index 4868f31..485b18c 100644
+--- a/src/activation.cpp
++++ b/src/activation.cpp
+@@ -20,6 +20,8 @@ namespace dlprim {
+             return StandardActivations::sigmoid;
+         if(name == "relu6")
+             return StandardActivations::relu6;
++        if(name == "silu")
++            return StandardActivations::silu;
+         throw ValidationError("Invalid cativation name:" + name);
+     }
+     char const *activation_to_name(StandardActivations act)
+@@ -35,6 +37,8 @@ namespace dlprim {
+             return "sigmoid";
+         case StandardActivations::relu6:
+             return "relu6";
++        case StandardActivations::silu:
++            return "silu";
+         }
+         throw ValidationError("Internal error invalid cativation");
+     }
+@@ -51,6 +55,8 @@ namespace dlprim {
+             return "((dtype)(1) / ((dtype)(1) + exp(-("+variable+"))))";
+         case StandardActivations::relu6:
+             return "(min(max((" + variable + "),(dtype)(0)),(dtype)(6)))";
++        case StandardActivations::silu:
++            return "(("+variable+") / ((dtype)(1) + exp(-("+variable+"))))";
+         }
+         throw ValidationError("Internal error invalid cativation");
+     }
+@@ -67,6 +73,8 @@ namespace dlprim {
+             return "(("+y+")*(1-"+y+")*("+dy+"))";
+         case StandardActivations::relu6:
+             return "((0<"+y+" && "+y+"<6)?"+dy+":0)";
++        case StandardActivations::silu:
++            throw ValidationError("Fused SiLU backward requires preactivation; forward inference only");
+         }
+         throw ValidationError("Internal error invalid cativation");
+     }
+diff --git a/src/core/activation.cpp b/src/core/activation.cpp
+index 3d6045d..07921f3 100644
+--- a/src/core/activation.cpp
++++ b/src/core/activation.cpp
+@@ -29,6 +29,7 @@ namespace core {
+     }
+     void activation_backward(Tensor &dx,Tensor &dy,Tensor &y,StandardActivations activation,float beta,ExecutionContext const &ec)
+     {
++        DLPRIM_CHECK(activation!=StandardActivations::silu);
+         Context ctx(ec);
+         cl::Program const &prog = gpu::Cache::instance().get_program(ctx,"activation",
+                                                     "ACTIVATION",int(activation));
+diff --git a/src/core/bn.cpp b/src/core/bn.cpp
+index 4725cc4..883cab6 100644
+--- a/src/core/bn.cpp
++++ b/src/core/bn.cpp
+@@ -9,6 +9,8 @@
+ #include <dlprim/gpu/program_cache.hpp>
+ 
+ #include <iostream>
++#include <cstdlib>
++#include <cstring>
+ 
+ namespace dlprim {
+ namespace core {
+@@ -42,19 +44,37 @@ namespace core {
+                     second_reduce_ = 128;
+                 else
+                     second_reduce_ = 64;
+-                ws_ += second_reduce_ * 2 * size_of_data_type(dtype) * features_;
+             }
+-            
++            // Opt-in r600 compatibility: the [2,128,16,16] statistics
++            // reduction hangs with WG_SIZE=256 in a standalone OpenCL fixture;
++            // WG_SIZE=64 and128 match CPU. Configure builds, dispatch and
++            // workspace together, including both reduction stages.
++            int max_wg=256;
++            char const *cap=std::getenv("DLPRIM_BN_MAX_WG");
++            if(cap) {
++                DLPRIM_CHECK(std::strcmp(cap,"64")==0 || std::strcmp(cap,"128")==0 || std::strcmp(cap,"256")==0);
++                max_wg=std::atoi(cap);
++            }
++            if(wg_>max_wg)
++                wg_=max_wg;
++            if(second_reduce_>max_wg)
++                second_reduce_=max_wg;
++            if(second_reduce_>1)
++                ws_ += second_reduce_ * 2 * size_of_data_type(dtype) * features_;
++
++            const char *coalesced=std::getenv("DLPRIM_BN_FWD_COALESCED");
+             cl::Program const &fwd_sums = gpu::Cache::instance().get_program(ctx,
+                         "bn_sums",
+                         "WG_SIZE",wg_,
+                         "BACKWARD",0,
++                        "COALESCED_FORWARD",int(coalesced && std::strcmp(coalesced,"1")==0),
+                         "SECOND_REDUCE_SIZE",second_reduce_);
+ 
+             cl::Program const &bwd_sums = gpu::Cache::instance().get_program(ctx,
+                         "bn_sums",
+                         "WG_SIZE",wg_,
+                         "BACKWARD",1,
++                        "COALESCED_BACKWARD",(std::getenv("DLPRIM_BN_BWD_COALESCED") && std::strcmp(std::getenv("DLPRIM_BN_BWD_COALESCED"),"1")==0) ? 1 : 0,
+                         "SECOND_REDUCE_SIZE",second_reduce_);
+ 
+             cl::Program const &utils = gpu::Cache::instance().get_program(ctx,"bn_utils");
+@@ -73,7 +93,7 @@ namespace core {
+             mean_var_to_a_b_ =cl::Kernel(utils,"mean_var_to_a_b");
+             combine_mean_var_with_gamma_beta_ = cl::Kernel(utils,"combine_mean_var_with_gamma_beta");
+             compute_backward_factors_ = cl::Kernel(utils,"compute_backward_factors");
+-            forward_ = cl::Kernel(utils,"forward");
++            forward_program_ = utils;
+             backward_data_ = cl::Kernel(utils,"backward_data");
+             backward_filter_ = cl::Kernel(utils,"backward_filter");
+             var_gamma_to_a_ = cl::Kernel(utils,"var_gamma_to_a");
+@@ -178,20 +198,21 @@ namespace core {
+         ///
+         /// Note mean/var can be taken from batch or from global running stats as per user request
+         ///
+-        void forward_ab(Tensor &x,Tensor &y,Tensor &a,Tensor &b,ExecutionContext const &e)
++        void forward_ab(Tensor &x,Tensor &y,Tensor &a,Tensor &b,ExecutionContext const &e,bool silu=false)
+         {
+             int p = 0;
++            cl::Kernel kernel(forward_program_,silu ? "forward_silu" : "forward");
+             int batches = x.shape()[0];
+             int rc = get_plane_size(x.shape());
+-            forward_.setArg(p++,int(x.shape()[0]));
+-            forward_.setArg(p++,features_);
+-            forward_.setArg(p++,int(rc));
+-
+-            x.set_arg(forward_,p);
+-            y.set_arg(forward_,p);
+-            a.set_arg(forward_,p);
+-            b.set_arg(forward_,p);
+-            enqueue3D(forward_,batches,rc,e,"forward");
++            kernel.setArg(p++,int(x.shape()[0]));
++            kernel.setArg(p++,features_);
++            kernel.setArg(p++,int(rc));
++
++            x.set_arg(kernel,p);
++            y.set_arg(kernel,p);
++            a.set_arg(kernel,p);
++            b.set_arg(kernel,p);
++            enqueue3D(kernel,batches,rc,e,silu ? "bn_silu_forward" : "forward");
+         }
+ 
+         void split_ws_to_a_b_rest(Tensor &ws,Tensor &a,Tensor &b,Tensor &rest)
+@@ -264,11 +285,19 @@ namespace core {
+                                             Tensor &gamma,Tensor &beta,
+                                             Tensor &mean,Tensor &var,
+                                             float eps,
+-                                            Tensor &ws,ExecutionContext const &e)
++                                            Tensor &ws,ExecutionContext const &e,
++                                            Tensor *saved_a,Tensor *saved_b)
+         {
+             DLPRIM_CHECK(ws.memory_size() >= ws_);
+             Tensor a,b;
+-            split_ws_to_a_b(ws,a,b);
++            DLPRIM_CHECK(bool(saved_a)==bool(saved_b));
++            if(saved_a) {
++                a=*saved_a;
++                b=*saved_b;
++            }
++            else {
++                split_ws_to_a_b(ws,a,b);
++            }
+ 
+             int p = 0;
+             combine_mean_var_with_gamma_beta_.setArg(p++,features_);
+@@ -284,7 +313,7 @@ namespace core {
+             auto e1=e.generate_series_context(0,2);
+             auto e2=e.generate_series_context(1,2);
+             e.queue().enqueueNDRangeKernel(combine_mean_var_with_gamma_beta_,cl::NullRange,cl::NDRange(features_),cl::NullRange,e1.events(),e1.event("mean_gamma_to_ab"));
+-            forward_ab(x,y,a,b,e2);
++            forward_ab(x,y,a,b,e2,saved_a!=nullptr);
+         }
+ 
+         ///
+@@ -573,7 +602,8 @@ namespace core {
+         DataType dt_;
+         cl::Kernel sums_,sums_reduce_;
+         cl::Kernel dyx_sums_,dyx_sums_reduce_;
+-        cl::Kernel forward_,backward_data_,backward_filter_;
++        cl::Program forward_program_;
++        cl::Kernel backward_data_,backward_filter_;
+         cl::Kernel update_sums_;
+         cl::Kernel mean_var_to_a_b_;
+         cl::Kernel compute_backward_factors_;
+diff --git a/src/core/conv.cpp b/src/core/conv.cpp
+index faba4c4..2ecf0ff 100644
+--- a/src/core/conv.cpp
++++ b/src/core/conv.cpp
+@@ -11,6 +11,9 @@
+ #include <dlprim/gpu/gemm.hpp>
+ #include <dlprim/gpu/program_cache.hpp>
+ #include <iostream>
++#include <cstdlib>
++#include <cstring>
++#include <limits>
+ 
+ namespace dlprim {
+ namespace core {
+@@ -42,6 +45,58 @@ namespace core {
+         return Shape(batch,config.channels_out,ohw[0],ohw[1]);
+     }
+ 
++    class Conv2DForwardPointwiseReduce : public Conv2DForward {
++    public:
++        Conv2DForwardPointwiseReduce(Context &ctx,Conv2DSettings const &config,bool bias)
++        {
++            auto &program=gpu::Cache::instance().get_program(ctx,"conv_pointwise_reduce",
++                "CHANNELS",config.channels_in,"OUTPUT_CHANNELS",config.channels_out,"BIAS",int(bias));
++            kernel_=cl::Kernel(program,"pointwise_reduce");
++        }
++        virtual char const *algo() const {return "pointwise_reduce";}
++        virtual void enqueue(Tensor &x,Tensor &w,Tensor *bias,Tensor &y,Tensor &,float factor,ExecutionContext const &e)
++        {
++            size_t plane=y.shape()[2]*y.shape()[3];
++            DLPRIM_CHECK(plane<=std::numeric_limits<cl_uint>::max());
++            int p=0;kernel_.setArg(p++,cl_uint(plane));
++            x.set_arg(kernel_,p);w.set_arg(kernel_,p);
++            if(bias)bias->set_arg(kernel_,p);
++            y.set_arg(kernel_,p);kernel_.setArg(p++,factor);
++            e.queue().enqueueNDRangeKernel(kernel_,cl::NullRange,
++                cl::NDRange((plane+127)/128*128,y.shape()[0]*y.shape()[1]),cl::NDRange(128,1),
++                e.events(),e.event("conv_pointwise_reduce"));
++        }
++    private:
++        cl::Kernel kernel_;
++    };
++
++    class Conv2DForwardDepthwiseStride2 : public Conv2DForward {
++    public:
++        Conv2DForwardDepthwiseStride2(Context &ctx,Conv2DSettings const &config,bool bias,StandardActivations activation)
++        {
++            Shape out=get_output_shape(config,config.shape);
++            char const *vector4=std::getenv("DLPRIM_DEPTHWISE_VECTOR4");
++            pixels_=vector4 && std::strcmp(vector4,"1")==0 && out[3]%4==0 ? 4 : 1;
++            auto &program=gpu::Cache::instance().get_program(ctx,"depthwise_stride2",
++                "CHANNELS",config.channels_in,"SRC_H",config.shape[2],"SRC_W",config.shape[3],
++                "DST_H",out[2],"DST_W",out[3],"PIXELS",pixels_,"BIAS",int(bias),"ACTIVATION",int(activation));
++            kernel_=cl::Kernel(program,"depthwise_stride2");
++        }
++        virtual char const *algo() const {return "depthwise_stride2";}
++        virtual void enqueue(Tensor &x,Tensor &w,Tensor *bias,Tensor &y,Tensor &,float factor,ExecutionContext const &e)
++        {
++            size_t plane=y.shape()[2]*y.shape()[3];int p=0;
++            x.set_arg(kernel_,p);w.set_arg(kernel_,p);if(bias)bias->set_arg(kernel_,p);
++            y.set_arg(kernel_,p);kernel_.setArg(p++,factor);
++            e.queue().enqueueNDRangeKernel(kernel_,cl::NullRange,
++                cl::NDRange((plane/pixels_+127)/128*128,y.shape()[0]*y.shape()[1]),cl::NDRange(128,1),
++                e.events(),e.event(pixels_==4 ? "depthwise_stride2_vector4" : "depthwise_stride2"));
++        }
++    private:
++        cl::Kernel kernel_;
++        int pixels_=1;
++    };
++
+     class Conv2DForwardGEMM : public Conv2DForward {
+     public:
+         virtual char const *algo() const
+@@ -110,6 +165,136 @@ namespace core {
+         int im2col_width_;
+     };
+     
++    class Conv2DBackwardDataGather : public Conv2DBackwardData {
++    public:
++        Conv2DBackwardDataGather(Context &ctx,Conv2DSettings const &c)
++        {
++            DLPRIM_CHECK(c.dtype==float_data);
++            char const *vector_flag=std::getenv("DLPRIM_GATHER_VECTOR4");
++            char const *small_flag=std::getenv("DLPRIM_GATHER_SMALL1X1");
++            size_t min_vector_width=small_flag && std::strcmp(small_flag,"0")!=0 ? 16 : 32;
++            vector4_=vector_flag && std::strcmp(vector_flag,"0")!=0 &&
++                c.kernel[0]==1 && c.kernel[1]==1 && c.stride[0]==1 && c.stride[1]==1 &&
++                c.pad[0]==0 && c.pad[1]==0 && c.shape[3]>=min_vector_width && c.shape[3]%4==0;
++            char const *spatial_flag=std::getenv("DLPRIM_GATHER_SPATIAL4");
++            spatial4_=spatial_flag && std::strcmp(spatial_flag,"0")!=0 &&
++                c.kernel[0]==3 && c.kernel[1]==3 && c.groups==1 &&
++                c.dilate[0]==1 && c.dilate[1]==1 && c.pad[0]==1 && c.pad[1]==1 &&
++                c.stride[0]==c.stride[1] && (c.stride[0]==1 || c.stride[0]==2) &&
++                c.shape[2]>=8 && c.shape[3]>=16 && c.shape[3]%(4*c.stride[1])==0 &&
++                (c.channels_in & (c.channels_in-1))==0 && (c.channels_out & (c.channels_out-1))==0;
++            // Four same-parity pixels leave only four work columns at width 16.
++            // Keep 64 work items, but avoid launching a half-empty 8x8 tile.
++            if(spatial4_ && c.stride[0]==2 && c.shape[3]==16 && c.shape[2]>=16) {
++                local_x_=4;
++                local_y_=16;
++            }
++            auto &program=gpu::Cache::instance().get_program(ctx,"conv_input_gather",
++                "CI",c.channels_in,"CO",c.channels_out,"GROUPS",c.groups,
++                "KH",c.kernel[0],"KW",c.kernel[1],"SH",c.stride[0],"SW",c.stride[1],
++                "PH",c.pad[0],"PW",c.pad[1],"DH",c.dilate[0],"DW",c.dilate[1],
++                "GATHER_VECTOR4",int(vector4_),"GATHER_SPATIAL4",int(spatial4_));
++            kernel_=cl::Kernel(program,"conv_input_gather");
++        }
++        virtual char const *algo() const {return "gather";}
++        virtual void enqueue(Tensor &dx,Tensor &w,Tensor &dy,Tensor &,float factor,ExecutionContext const &e)
++        {
++            int p=0;
++            kernel_.setArg(p++,cl_uint(dx.shape()[0]));kernel_.setArg(p++,cl_uint(dx.shape()[2]));kernel_.setArg(p++,cl_uint(dx.shape()[3]));
++            kernel_.setArg(p++,cl_uint(dy.shape()[2]));kernel_.setArg(p++,cl_uint(dy.shape()[3]));
++            for(auto *t:{&dx,&w,&dy}) {
++                DLPRIM_CHECK(t->device_offset()+t->shape().total_size()<=std::numeric_limits<cl_uint>::max());
++                kernel_.setArg(p++,t->device_buffer());kernel_.setArg(p++,cl_uint(t->device_offset()));
++            }
++            kernel_.setArg(p++,factor);
++            // Retain explicit 64-item groups for the r600/Clover compatibility
++            // path. Narrow stride-two maps use 4x16; other maps retain 8x8.
++            // Out-of-range work items are guarded in the kernel.
++            size_t width=dx.shape()[3],height=dx.shape()[2];
++            if(vector4_ || spatial4_)width/=4;
++            e.queue().enqueueNDRangeKernel(kernel_,cl::NullRange,
++                cl::NDRange((width+local_x_-1)/local_x_*local_x_,
++                            (height+local_y_-1)/local_y_*local_y_,dx.shape()[0]*dx.shape()[1]),
++                cl::NDRange(local_x_,local_y_,1),e.events(),e.event(spatial4_ ? "conv_input_gather4_3x3" : "conv_input_gather"));
++        }
++    private:
++        bool vector4_=false;
++        bool spatial4_=false;
++        size_t local_x_=8;
++        size_t local_y_=8;
++        cl::Kernel kernel_;
++    };
++
++    // Opt-in forward-GEMM reuse. Transpose current weights on-device; for
++    // spatial stride2, gather independent patch gradients into owned pixels.
++    class Conv2DBackwardDataForwardGEMM : public Conv2DBackwardData {
++    public:
++        Conv2DBackwardDataForwardGEMM(Context &ctx,Conv2DSettings const &c) : config_(c)
++        {
++            out_=get_output_shape(c,c.shape);
++            weight_count_=size_t(c.channels_in)*c.channels_out*c.kernel[0]*c.kernel[1];
++            spatial_=c.kernel[0]!=1;
++            columns_=spatial_ ? size_t(out_[0])*c.channels_in*c.kernel[0]*c.kernel[1]*out_[2]*out_[3] : 0;
++            Conv2DSettings f=c;
++            f.channels_in=c.channels_out;
++            f.channels_out=c.channels_in*c.kernel[0]*c.kernel[1];
++            f.kernel[0]=f.kernel[1]=1;f.stride[0]=f.stride[1]=1;
++            f.pad[0]=f.pad[1]=0;
++            f.shape=out_;
++            forward_=Conv2DForward::create(ctx,f,false,StandardActivations::identity,"gemm");
++            DLPRIM_CHECK(forward_->workspace()==0);
++            auto &p=gpu::Cache::instance().get_program(ctx,"conv_input_forward",
++                "CI",c.channels_in,"CO",c.channels_out,"KH",c.kernel[0],"KW",c.kernel[1],
++                "IH",c.shape[2],"IW",c.shape[3],"OH",out_[2],"OW",out_[3],
++                "SH",c.stride[0],"SW",c.stride[1],"PH",c.pad[0],"PW",c.pad[1]);
++            transpose_=cl::Kernel(p,"input_grad_transpose");
++            const char *tiles=std::getenv("DLPRIM_COL2IM_TILE2");
++            tiled_gather_=spatial_ && tiles && std::strcmp(tiles,"1")==0 &&
++                c.kernel[0]==3 && c.kernel[1]==3 && c.stride[0]==2 && c.stride[1]==2 &&
++                c.pad[0]==1 && c.pad[1]==1 && c.dilate[0]==1 && c.dilate[1]==1 &&
++                c.shape[2]==2*out_[2] && c.shape[3]==2*out_[3] &&
++                (c.shape[2]>=272);
++            if(spatial_)
++                gather_=cl::Kernel(p,tiled_gather_ ? "input_grad_col2im_tile2" : "input_grad_col2im");
++        }
++        virtual char const *algo() const {return "input_forward_gemm";}
++        virtual size_t workspace() {return (weight_count_+columns_)*sizeof(float);}
++        virtual void enqueue(Tensor &dx,Tensor &w,Tensor &dy,Tensor &ws,float factor,ExecutionContext const &e)
++        {
++            DLPRIM_CHECK(dx.shape()==config_.shape && dy.shape()==out_);
++            Tensor work=ws.workspace_as_type(float_data);
++            DLPRIM_CHECK(work.shape().total_size()>=weight_count_+columns_);
++            int rows=config_.channels_in*config_.kernel[0]*config_.kernel[1];
++            Tensor wt=work.sub_tensor(0,Shape(rows,config_.channels_out,1,1));
++            int arg=0;w.set_arg(transpose_,arg);wt.set_arg(transpose_,arg);
++            auto first=e.generate_series_context(0,spatial_ ? 3 : 2);
++            e.queue().enqueueNDRangeKernel(transpose_,cl::NullRange,
++                cl::NDRange((rows+7)/8*8,(config_.channels_out+7)/8*8),cl::NDRange(8,8),
++                first.events(),first.event("input_grad_transpose"));
++            auto second=e.generate_series_context(1,spatial_ ? 3 : 2);
++            if(!spatial_) {
++                forward_->enqueue(dy,wt,nullptr,dx,ws,factor,second);
++            }
++            else {
++                Tensor col=work.sub_tensor(weight_count_,Shape(out_[0],rows,out_[2],out_[3]));
++                forward_->enqueue(dy,wt,nullptr,col,ws,0,second);
++                arg=0;col.set_arg(gather_,arg);dx.set_arg(gather_,arg);gather_.setArg(arg++,factor);
++                auto third=e.generate_series_context(2,3);
++                size_t plane=dx.shape()[2]*dx.shape()[3]/(tiled_gather_ ? 4 : 1);
++                e.queue().enqueueNDRangeKernel(gather_,cl::NullRange,
++                    cl::NDRange((plane+127)/128*128,dx.shape()[0]*dx.shape()[1]),cl::NDRange(128,1),
++                    third.events(),third.event(tiled_gather_ ? "input_grad_col2im_tile2" : "input_grad_col2im"));
++            }
++        }
++    private:
++        Conv2DSettings config_;
++        Shape out_;
++        size_t weight_count_=0,columns_=0;
++        bool spatial_=false,tiled_gather_=false;
++        std::unique_ptr<Conv2DForward> forward_;
++        cl::Kernel transpose_,gather_;
++    };
++
+     class Conv2DBackwardDataGEMM : public Conv2DBackwardData {
+     public:
+         Conv2DBackwardDataGEMM(Context &ctx,Conv2DSettings const &config) :
+@@ -164,6 +349,181 @@ namespace core {
+         Conv2DSettings config_;
+     };
+ 
++    static int yolo26_hd_filter_batch(Conv2DSettings const &config)
++    {
++        if(config.dtype!=float_data || config.groups!=1)
++            return 0;
++        const int batch=config.shape[0];
++        const char *shared=std::getenv("DLPRIM_FILTER_V26_HD");
++        if(batch>=1 && batch<=6 && shared && std::strcmp(shared,"1")==0)
++            return batch;
++        const char *name=batch==1 ? "DLPRIM_FILTER_V26_B1" :
++                         batch==4 ? "DLPRIM_FILTER_V26_B4" : nullptr;
++        const char *flag=name ? std::getenv(name) : nullptr;
++        return flag && std::strcmp(flag,"1")==0 ? batch : 0;
++    }
++
++    static bool yolo26_hd_extra_filters(int batch)
++    {
++        const char *flag=std::getenv("DLPRIM_FILTER_V26_HD_EXTRA");
++        return batch==4 && flag && std::strcmp(flag,"1")==0;
++    }
++
++    static int yolo26_hd_filter_groups(Conv2DSettings const &config)
++    {
++        const int batch=yolo26_hd_filter_batch(config);
++        if(!batch)
++            return 0;
++        size_t h=config.shape[2],w=config.shape[3];
++        int ci=config.channels_in,co=config.channels_out;
++        if(config.kernel[0]==3 && config.kernel[1]==3 &&
++           config.stride[0]==2 && config.stride[1]==2) {
++            if(ci==64 && co==64 && h==272 && w==480)
++                return batch==1 ? 1024 : (batch<=3 ? 128 : 512);
++            if(ci==128 && co==128 && h==136 && w==240)
++                return batch<=2 ? 512 : (batch==3 ? 128 : 1024);
++        }
++        if(batch>1 && config.kernel[0]==1 && config.kernel[1]==1) {
++            if(ci==80 && co==80 && h==136 && w==240)
++                return 128;
++            if(ci==192 && co==128 && h==68 && w==120)
++                return batch==6 ? 1024 : (batch==4 ? 256 : 128);
++            if(yolo26_hd_extra_filters(batch)) {
++                if(ci==384 && co==256 && h==34 && w==60)
++                    return 256;
++                if((ci==48 && co==64 && h==272 && w==480) ||
++                   (ci==256 && co==64 && h==136 && w==240))
++                    return 128;
++            }
++        }
++        return 0;
++    }
++
++    // Opt-in atomic-free split-K for small filter matrices with long reductions.
++    class Conv2DBackwardFilterSplit : public Conv2DBackwardFilter {
++    public:
++        static bool hd_candidate(Conv2DSettings const &c)
++        {
++            char const *flag=std::getenv("DLPRIM_FILTER_SPLIT_HD");
++            if(!flag || std::strcmp(flag,"1")!=0 || c.dtype!=float_data || c.groups!=1 ||
++               c.dilate[0]!=1 || c.dilate[1]!=1)return false;
++            return (c.kernel[0]==1 && c.kernel[1]==1 && c.stride[0]==1 && c.stride[1]==1 &&
++                    c.pad[0]==0 && c.pad[1]==0) ||
++                   (c.kernel[0]==3 && c.kernel[1]==3 && c.stride[0]==2 && c.stride[1]==2 &&
++                    c.pad[0]==1 && c.pad[1]==1);
++        }
++        static int tile(Conv2DSettings const &c) {
++            char const *v=std::getenv("DLPRIM_FILTER_TILE");
++            if(hd_candidate(c) && yolo26_hd_filter_groups(c))return 64;
++            if(!v || !hd_candidate(c))return 32;
++            if(std::strcmp(v,"64")==0)return 64;
++            if(std::strcmp(v,"tuned")!=0)return 32;
++            Shape out=get_output_shape(c,c.shape);
++            size_t plane=out[2]*out[3];
++            int ci=c.channels_in,co=c.channels_out;
++            if(c.kernel[0]==3 &&
++               ((ci==32 && co==64 && plane==32640) ||
++                (ci==64 && (co==64 || co==128) && plane==8160) ||
++                (ci==128 && (co==128 || co==256) && plane==2040)))return 64;
++            if(c.kernel[0]==1 &&
++               (((ci==64 || ci==128) && co==64 && plane==32640) ||
++                (ci==384 && co==128 && plane==8160)))return 64;
++            return 32;
++        }
++        static int partitions(Conv2DSettings const &c)
++        {
++            size_t m=c.channels_out/c.groups;
++            size_t n=(c.channels_in/c.groups)*c.kernel[0]*c.kernel[1];
++            Shape out=get_output_shape(c,c.shape);
++            // Keep the initial opt-in path within tested legacy address mapping.
++            // Non-power-of-two spatial division has a separate control failure.
++            bool hd=hd_candidate(c);
++            if(!hd && ((out[2] & (out[2]-1)) || (out[3] & (out[3]-1))))return 1;
++            size_t k=out[0]*out[2]*out[3];
++            size_t ts=tile(c);
++            size_t tiles=((m+ts-1)/ts)*((n+ts-1)/ts)*c.groups;
++            size_t target_groups=128;
++            char const *tuned=std::getenv("DLPRIM_FILTER_SPLIT_HD_TUNED");
++            if(hd && tuned && std::strcmp(tuned,"1")==0) {
++                size_t plane=out[2]*out[3];
++                if(c.kernel[0]==3) {
++                    if(c.channels_in==3 && c.channels_out==16 && plane==522240)target_groups=256;
++                    else if((c.channels_in==16 && c.channels_out==32 && plane==130560) ||
++                            (c.channels_in==64 && c.channels_out==128 && plane==8160))target_groups=512;
++                }
++                else if((c.channels_in==128 && c.channels_out==64 && plane==32640) ||
++                        (c.channels_in==384 && c.channels_out==128 && plane==8160) ||
++                        (c.channels_in==512 && c.channels_out==256 && plane==2040) ||
++                        (c.channels_in==64 && c.channels_out==5 && plane==32640))target_groups=256;
++            }
++            if(hd) {
++                int groups=yolo26_hd_filter_groups(c);
++                if(groups)target_groups=groups;
++            }
++            // Bounded experimental tuning; keep the established algorithm default.
++            char const *target=std::getenv("DLPRIM_FILTER_SPLIT_GROUPS");
++            if(target) {
++                char *end=nullptr;
++                long value=std::strtol(target,&end,10);
++                if(end!=target && *end=='\0' && value>=64 && value<=1024 &&
++                   (value & (value-1))==0)
++                    target_groups=size_t(value);
++            }
++            int parts=1;
++            while(parts<(hd ? 256 : 64) && tiles*parts<target_groups && k/size_t(parts*2)>=512)parts*=2;
++            // Keep partial storage bounded, including grouped convolutions.
++            while(parts>1 && m*n*c.groups*parts*sizeof(float)>4*1024*1024)parts/=2;
++            return parts;
++        }
++        Conv2DBackwardFilterSplit(Context &ctx,Conv2DSettings const &c) : config_(c),parts_(partitions(c)),tile_(tile(c))
++        {
++            Shape out=get_output_shape(c,c.shape);
++            count_=size_t(c.channels_out)*(c.channels_in/c.groups)*c.kernel[0]*c.kernel[1];
++            auto &program=gpu::Cache::instance().get_program(ctx,"sgemm",
++                "TILE_SIZE_M",tile_,"TILE_SIZE_N",tile_,"BLOCK_SIZE_M",4,"BLOCK_SIZE_N",4,
++                "TILE_SIZE_K",32,"HOST_HAS_INTEL_SUBGROUPS",0,"TILE_OFFSET",0,
++                "BIAS",0,"ATRANS",0,"BTRANS",0,"IM2COL_OCHAN",out[2]*out[3],
++                "CONVGEMM",2,"KERN_H",c.kernel[0],"KERN_W",c.kernel[1],
++                "DILATE_H",c.dilate[0],"DILATE_W",c.dilate[1],"PAD_H",c.pad[0],"PAD_W",c.pad[1],
++                "STRIDE_H",c.stride[0],"STRIDE_W",c.stride[1],"GROUPS",c.groups,
++                "CHANNELS_IN",c.channels_in/c.groups,"SRC_COLS",c.shape[3],"SRC_ROWS",c.shape[2],
++                "IMG_COLS",out[3],"IMG_ROWS",out[2],"REDUCE_K",parts_,"FILTER_SPLIT_OUTPUT",1,"ACTIVATION",0);
++            partial_=cl::Kernel(program,"sgemm");
++            auto &reduction=gpu::Cache::instance().get_program(ctx,"filter_split_reduce","FILTER_PARTITIONS",parts_);
++            reduce_=cl::Kernel(reduction,"filter_split_reduce");
++        }
++        virtual char const *algo() const {return "split_filter";}
++        virtual size_t workspace() {return count_*parts_*sizeof(float);}
++        virtual void enqueue(Tensor &x,Tensor &dw,Tensor &dy,Tensor &ws,float factor,ExecutionContext const &e)
++        {
++            Tensor partial=ws.workspace_as_type(float_data);
++            DLPRIM_CHECK(partial.shape().total_size()>=count_*parts_);
++            int m=config_.channels_out/config_.groups;
++            int n=(config_.channels_in/config_.groups)*config_.kernel[0]*config_.kernel[1];
++            int k=dy.shape()[0]*dy.shape()[2]*dy.shape()[3];
++            int arg=0;partial_.setArg(arg++,m);partial_.setArg(arg++,n);partial_.setArg(arg++,k);
++            dy.set_arg(partial_,arg);partial_.setArg(arg++,k);
++            x.set_arg(partial_,arg);partial_.setArg(arg++,n);
++            partial.set_arg(partial_,arg);partial_.setArg(arg++,n);partial_.setArg(arg++,0.0f);
++            auto first=e.generate_series_context(0,2),second=e.generate_series_context(1,2);
++            e.queue().enqueueNDRangeKernel(partial_,cl::NullRange,
++                cl::NDRange(config_.groups*parts_,((m+tile_-1)/tile_)*(tile_/4),((n+tile_-1)/tile_)*(tile_/4)),
++                cl::NDRange(1,tile_/4,tile_/4),first.events(),first.event("conv_filter_partials"));
++            DLPRIM_CHECK(partial.device_offset()+count_*parts_<=std::numeric_limits<cl_uint>::max());
++            DLPRIM_CHECK(dw.device_offset()+count_<=std::numeric_limits<cl_uint>::max());
++            reduce_.setArg(0,cl_uint(count_));reduce_.setArg(1,partial.device_buffer());
++            reduce_.setArg(2,cl_uint(partial.device_offset()));reduce_.setArg(3,dw.device_buffer());
++            reduce_.setArg(4,cl_uint(dw.device_offset()));reduce_.setArg(5,factor);
++            e.queue().enqueueNDRangeKernel(reduce_,cl::NullRange,
++                cl::NDRange((count_+31)/32*32),cl::NDRange(32),second.events(),second.event("conv_filter_reduce"));
++        }
++    private:
++        Conv2DSettings config_;
++        int parts_,tile_;
++        size_t count_;
++        cl::Kernel partial_,reduce_;
++    };
++
+     class Conv2DBackwardFilterGEMM: public Conv2DBackwardFilter  {
+     public:
+         Conv2DBackwardFilterGEMM(Context &ctx,Conv2DSettings const &config) : config_(config) 
+@@ -268,22 +628,33 @@ namespace core {
+             cl::NDRange g1 = gpu::round_range(config_.channels_out,config_.channels_in,l1);
+             ec.queue().enqueueNDRangeKernel(conv_kernel_,cl::NullRange,g1,l1,ec.events(),ec1.event("winograd_3to4_kernel"));
+             cl::NDRange l2(256,1);
+-            int tiles = ((w + 1) / 2 * (h + 1) / 2 * B + 31)/32;
+-            cl::NDRange g2(tiles * 256,(N + 31) / 32);
++            int width=compact_ ? 16 : 32;
++            int tiles = ((w + 1) / 2 * (h + 1) / 2 * B + width-1)/width;
++            cl::NDRange g2(tiles * 256,(N + width-1) / width);
+             ec.queue().enqueueNDRangeKernel(conv_,cl::NullRange,g2,l2,ec.events(),ec2.event("winograd_3x3_main"));
+         }
+ 
+-        Conv2DForwardWinograd(Context &ctx,Conv2DSettings const &config,bool bias,StandardActivations activation = StandardActivations::identity) :
++        Conv2DForwardWinograd(Context &ctx,Conv2DSettings const &config,bool bias,StandardActivations activation = StandardActivations::identity,int compact_override=-1) :
+             config_(config)
+         {
+             int off = ctx.is_amd() ? 0 : 1;
+             int toff = 1;
+             int local_mem_size = ctx.device().getInfo<CL_DEVICE_LOCAL_MEM_SIZE>();
++            char const *compact=std::getenv("DLPRIM_WINOGRAD_COMPACT");
++            compact_mode_=compact ? std::atoi(compact) : 0;
++            if(compact && std::strcmp(compact,"small")==0)
++                compact_mode_=config.channels_out<=16 ? 1 : 0;
++            if(compact_override>=0)compact_mode_=compact_override;
++            if(compact_mode_!=1 && compact_mode_!=2)compact_mode_=0;
++            compact_=compact_mode_!=0;
+             if(local_mem_size < 40960) {
+                 off = 0;
+                 toff = 0;
+             }
++            if(compact_) {off=0;toff=0;}
++            if(compact_mode_==2)off=1;
+             cl::Program const &prog = gpu::Cache::instance().get_program(ctx,"winograd_fwd",
++                                            "COMPACT",compact_mode_,
+                                             "ACTIVATION",int(activation),
+                                             "STRIDE_OFFSET",off,
+                                             "TR_STRIDE_OFFSET",toff,
+@@ -294,6 +665,48 @@ namespace core {
+     private:
+         cl::Kernel conv_,conv_kernel_;
+         Conv2DSettings config_;
++        bool compact_=false;
++        int compact_mode_=0;
++    };
++
++    class Conv2DBackwardDataForwardWinograd : public Conv2DBackwardData {
++    public:
++        Conv2DBackwardDataForwardWinograd(Context &ctx,Conv2DSettings const &c,int compact) : config_(c)
++        {
++            Conv2DSettings f=c;
++            f.channels_in=c.channels_out;f.channels_out=c.channels_in;
++            f.shape=get_output_shape(c,c.shape);
++            forward_.reset(new Conv2DForwardWinograd(ctx,f,false,StandardActivations::identity,compact));
++            size_t weights=size_t(c.channels_in)*c.channels_out*9;
++            weight_space_=(weights+15)/16*16;
++            forward_space_=forward_->workspace()/sizeof(float);
++            auto &p=gpu::Cache::instance().get_program(ctx,"conv_input_forward",
++                "CI",c.channels_in,"CO",c.channels_out,"KH",3,"KW",3,
++                "IH",c.shape[2],"IW",c.shape[3],"OH",c.shape[2],"OW",c.shape[3],
++                "SH",1,"SW",1,"PH",1,"PW",1);
++            weights_=cl::Kernel(p,"input_grad_winograd_weights");
++        }
++        virtual char const *algo() const {return "input_forward_winograd";}
++        virtual size_t workspace() {return (weight_space_+forward_space_)*sizeof(float);}
++        virtual void enqueue(Tensor &dx,Tensor &w,Tensor &dy,Tensor &ws,float factor,ExecutionContext const &e)
++        {
++            Tensor work=ws.workspace_as_type(float_data);
++            DLPRIM_CHECK(work.shape().total_size()>=weight_space_+forward_space_);
++            Tensor flipped=work.sub_tensor(0,Shape(config_.channels_in,config_.channels_out,3,3));
++            Tensor transformed=work.sub_tensor(weight_space_,Shape(forward_space_));
++            DLPRIM_CHECK(transformed.device_offset()%16==0);
++            int arg=0;w.set_arg(weights_,arg);flipped.set_arg(weights_,arg);
++            auto first=e.generate_series_context(0,2),second=e.generate_series_context(1,2);
++            e.queue().enqueueNDRangeKernel(weights_,cl::NullRange,
++                cl::NDRange((config_.channels_in*9+7)/8*8,(config_.channels_out+7)/8*8),
++                cl::NDRange(8,8),first.events(),first.event("input_grad_winograd_weights"));
++            forward_->enqueue(dy,flipped,nullptr,dx,transformed,factor,second);
++        }
++    private:
++        Conv2DSettings config_;
++        std::unique_ptr<Conv2DForward> forward_;
++        size_t weight_space_=0,forward_space_=0;
++        cl::Kernel weights_;
+     };
+ 
+     class Conv2DBackwardDataWinograd : public Conv2DBackwardData {
+@@ -388,35 +801,113 @@ namespace core {
+             int off = ctx.is_amd() ? 0 : 1;
+             int toff = 1;
+             int local_mem_size = ctx.device().getInfo<CL_DEVICE_LOCAL_MEM_SIZE>();
++            char const *compact=std::getenv("DLPRIM_WINOGRAD_FILTER_COMPACT");
++            compact_=compact && std::strcmp(compact,"1")==0;
++            char const *parts=std::getenv("DLPRIM_WINOGRAD_FILTER_PARTS");
++            if(parts) {
++                char *end=nullptr;long n=std::strtol(parts,&end,10);
++                if(end!=parts && *end=='\0' && n>=8 && n<=128 && (n&(n-1))==0)
++                    partitions_=int(n);
++            }
++            char const *tuned=std::getenv("DLPRIM_WINOGRAD_FILTER_TUNED");
++            if(tuned && std::strcmp(tuned,"1")==0) {
++                size_t plane=size_t(h)*w;
++                int ci=config.channels_in,co=config.channels_out;
++                if(ci==16 && co==16 && plane==130560) {compact_=true;partitions_=64;}
++                else if(ci==32 && co==32 && plane==32640) {compact_=true;partitions_=32;}
++                else if((ci==64 && co==64 && (plane==32640 || plane==8160 || plane==2040)) ||
++                        (ci==128 && co==64 && plane==8160)) {compact_=true;partitions_=8;}
++                else if((ci==128 && co==128 && plane==2040) ||
++                        (ci==256 && co==64 && plane==2040)) {compact_=true;partitions_=0;}
++            }
++            const int yolo26_batch=yolo26_hd_filter_batch(config);
++            if(yolo26_batch &&
++               config.kernel[0]==3 && config.kernel[1]==3 &&
++               config.stride[0]==1 && config.stride[1]==1) {
++                int ci=config.channels_in,co=config.channels_out;
++                int selected=0;
++                if(h==272 && w==480 && ci==16 && co==8)
++                    selected=(yolo26_batch==1 || yolo26_batch==4 || yolo26_batch==6) ? 128 : 64;
++                else if(h==272 && w==480 && ci==8 && co==16)selected=64;
++                else if(h==136 && w==240 && ci==16 && co==16)selected=yolo26_batch==6 ? 128 : 64;
++                else if((h==68 && w==120 && ci==32 && co==32) ||
++                        (h==68 && w==120 && ci==128 && co==16))selected=16;
++                else if(h==136 && w==240 && ci==64 && co==16)selected=yolo26_batch==6 ? 64 : (yolo26_batch>=4 ? 32 : 16);
++                else if(yolo26_batch>1 && h==136 && w==240 && ci==32 && co==16)
++                    selected=(yolo26_batch==3 || yolo26_batch==5) ? 64 : 32;
++                const char *b6_extra=std::getenv("DLPRIM_FILTER_V26_B6_COMPACT");
++                if(yolo26_batch==6 && b6_extra && std::strcmp(b6_extra,"1")==0) {
++                    if((h==136 && w==240 && ci==16 && co==32) ||
++                       (((h==68 && w==120) || (h==34 && w==60)) && ci==16 && co==16))
++                        selected=64;
++                    else if(h==34 && w==60 &&
++                            ((ci==128 && co==64) || (ci==64 && co==128) || (ci==256 && co==16)))
++                        selected=8;
++                }
++                if(yolo26_hd_extra_filters(yolo26_batch)) {
++                    if(h==136 && w==240 && ci==16 && co==32)selected=32;
++                    else if(h==34 && w==60 && ci==256 && co==16)selected=16;
++                }
++                if(selected) {
++                    compact_=true;
++                    partitions_=selected;
++                }
++            }
++            count_=size_t(config.channels_in)*config.channels_out*9;
++            while(partitions_>1 && count_*partitions_*sizeof(float)>16*1024*1024)partitions_/=2;
++            if(count_*sizeof(float)>16*1024*1024)partitions_=0;
+             if(local_mem_size < 40960) {
+                 off = 0;
+                 toff = 0;
+             }
++            if(compact_) {off=0;toff=0;}
+             cl::Program const &prog = gpu::Cache::instance().get_program(ctx,"winograd_bwd_filter",
++                                                                            "FILTER_COMPACT",int(compact_),
++                                                                            "FILTER_PARTIALS",int(partitions_>0),
+                                                                             "IMG_H",h,"IMG_W",w,
+                                                                             "STRIDE_OFFSET",off,
+                                                                             "TR_STRIDE_OFFSET",toff);
+             bw_conv_filter_ = cl::Kernel(prog,"winconv_3x3_bwd_filter");
++            if(partitions_) {
++                auto &p=gpu::Cache::instance().get_program(ctx,"filter_split_reduce","FILTER_PARTITIONS",partitions_);
++                reduce_=cl::Kernel(p,"filter_split_reduce");
++            }
+         }
+-        virtual void enqueue(Tensor &x,Tensor &dK,Tensor &dy,Tensor &,float factor,ExecutionContext const &ec) 
++        virtual size_t workspace() {return count_*partitions_*sizeof(float);}
++        virtual void enqueue(Tensor &x,Tensor &dK,Tensor &dy,Tensor &ws,float factor,ExecutionContext const &ec)
+         {
+             int B = x.shape()[0];
+             int N = config_.channels_out;
+             int C = config_.channels_in;
++            Tensor target=partitions_ ? ws.workspace_as_type(float_data) : dK;
+             int p=0;
+             bw_conv_filter_.setArg(p++,B);
+             bw_conv_filter_.setArg(p++,N);
+             bw_conv_filter_.setArg(p++,C);
+             x.set_arg(bw_conv_filter_,p);
+-            dK.set_arg(bw_conv_filter_,p);
++            target.set_arg(bw_conv_filter_,p);
+             dy.set_arg(bw_conv_filter_,p);
+             bw_conv_filter_.setArg(p++,factor);
+             
+             cl::NDRange wg(256,1,1);
+-            int g1 = 256 * ((C+31)/32);
+-            int g2 = (N+31)/32;
+-            cl::NDRange gr(g1,g2,reduce_k_ ? 8 : 1);
+-            if(reduce_k_) {
++            int width=compact_ ? 16 : 32;
++            int g1 = 256 * ((C+width-1)/width);
++            int g2 = (N+width-1)/width;
++            cl::NDRange gr(g1,g2,partitions_ ? partitions_ : reduce_k_ ? 8 : 1);
++            if(partitions_) {
++                DLPRIM_CHECK(target.shape().total_size()>=count_*partitions_);
++                auto first=ec.generate_series_context(0,2),second=ec.generate_series_context(1,2);
++                ec.queue().enqueueNDRangeKernel(bw_conv_filter_,cl::NullRange,gr,wg,
++                                               first.events(),first.event("winograd_filter_partials"));
++                DLPRIM_CHECK(target.device_offset()+count_*partitions_<=std::numeric_limits<cl_uint>::max());
++                DLPRIM_CHECK(dK.device_offset()+count_<=std::numeric_limits<cl_uint>::max());
++                reduce_.setArg(0,cl_uint(count_));reduce_.setArg(1,target.device_buffer());
++                reduce_.setArg(2,cl_uint(target.device_offset()));reduce_.setArg(3,dK.device_buffer());
++                reduce_.setArg(4,cl_uint(dK.device_offset()));reduce_.setArg(5,factor);
++                ec.queue().enqueueNDRangeKernel(reduce_,cl::NullRange,
++                    cl::NDRange((count_+31)/32*32),cl::NDRange(32),second.events(),second.event("winograd_filter_reduce"));
++            }
++            else if(reduce_k_) {
+                 ExecutionContext ec1 = ec.generate_series_context(0,2);
+                 ExecutionContext ec2 = ec.generate_series_context(1,2);
+                 s_.enqueue(factor,dK,ec1);
+@@ -431,6 +922,10 @@ namespace core {
+         Scale s_;
+         cl::Kernel bw_conv_filter_;
+         bool reduce_k_;
++        bool compact_=false;
++        int partitions_=0;
++        size_t count_=0;
++        cl::Kernel reduce_;
+     };
+ 
+     struct DepthwiseSeparableBase {
+@@ -486,16 +981,33 @@ namespace core {
+             if(lW * lH < 64)
+                 lD = 64 / (lW * lH);
+             
+-            cl::NDRange wg(lH,lW,lD);
+-            cl::NDRange gr=gpu::round_range(gH,gW,batch*config_.channels_in,wg);
++            if(local_width_ > 0) {
++                lW=local_width_;lH=local_height_;lD=1;
++            }
++            cl::NDRange wg=width_first_ ? cl::NDRange(lW,lH,lD) : cl::NDRange(lH,lW,lD);
++            cl::NDRange gr=width_first_ ? gpu::round_range(gW,gH,batch*config_.channels_in,wg)
++                                       : gpu::round_range(gH,gW,batch*config_.channels_in,wg);
+                         
+             ec.queue().enqueueNDRangeKernel(conv_,cl::NullRange,gr,wg,ec.events(),ec.event("sep_conv"));
+         }
+ 
+-        Conv2DForwardDepthwiseSeparable(Context &ctx,Conv2DSettings const &config,bool bias,StandardActivations activation = StandardActivations::identity) :
++        Conv2DForwardDepthwiseSeparable(Context &ctx,Conv2DSettings const &config,bool bias,StandardActivations activation = StandardActivations::identity,bool reverse_kernel=false) :
+             config_(config)
+         {
++            // Optional forward 3x3 tuning; defaults and backward are unchanged.
++            char const *layout=std::getenv("DLPRIM_DEPTHWISE_LAYOUT");
++            if(layout && config.dtype==float_data && config.kernel[0]==3 &&
++               config.channels_out==config.channels_in) {
++                if(std::strcmp(layout,"columns")==0)width_first_=true;
++                else if(std::strcmp(layout,"32x4")==0) {width_first_=true;local_width_=32;local_height_=4;}
++                else if(std::strcmp(layout,"64x1")==0) {width_first_=true;local_width_=64;local_height_=1;}
++                else if(std::strcmp(layout,"16x4")==0) {width_first_=true;local_width_=16;local_height_=4;}
++                else if(std::strcmp(layout,"32x8")==0) {width_first_=true;local_width_=32;local_height_=8;}
++            }
+             cl::Program const &prog = gpu::Cache::instance().get_program(ctx,"depthwise_separable_conv",
++                                    "BUILD_BACKWARD_DATA",0,
++                                    "DW_REVERSE_KERNEL",int(reverse_kernel),
++                                    "DW_WIDTH_FIRST",int(width_first_),
+                                     "ACTIVATION",int(activation),
+                                     "BIAS",int(bias),
+                                     "PATCH_ROWS",ds_patch_rows,
+@@ -507,6 +1019,8 @@ namespace core {
+     private:
+         Conv2DSettings config_;
+         cl::Kernel conv_;
++        bool width_first_=false;
++        int local_width_=0,local_height_=0;
+     };
+     
+     class Conv2DBackwardDataDepthwiseSeparable  : public Conv2DBackwardData, public DepthwiseSeparableBase {
+@@ -515,8 +1029,12 @@ namespace core {
+         {
+             return "depthwise_separable";
+         }
+-        virtual void enqueue(Tensor &dx,Tensor &K,Tensor &dy,Tensor &,float factor,ExecutionContext const &ec)
++        virtual void enqueue(Tensor &dx,Tensor &K,Tensor &dy,Tensor &ws,float factor,ExecutionContext const &ec)
+         {
++            if(forward_) {
++                forward_->enqueue(dy,K,nullptr,dx,ws,factor,ec);
++                return;
++            }
+             int total = 1;
+             if(factor != 1.0f ) {
+                 total++;
+@@ -554,6 +1072,11 @@ namespace core {
+             config_(config),
+             s_(ctx,config.dtype)
+         {
++            char const *reuse=std::getenv("DLPRIM_DEPTHWISE_INPUT_FORWARD");
++            if(reuse && std::strcmp(reuse,"1")==0 && config.dtype==float_data && config.kernel[0]==3) {
++                forward_.reset(new Conv2DForwardDepthwiseSeparable(ctx,config,false,StandardActivations::identity,true));
++                return;
++            }
+             cl::Program const &prog = gpu::Cache::instance().get_program(ctx,"depthwise_separable_conv",
+                                     "PATCH_ROWS",ds_patch_rows,
+                                     "PATCH_COLS",ds_patch_cols,
+@@ -565,6 +1088,7 @@ namespace core {
+         Conv2DSettings config_;
+         Scale s_;
+         cl::Kernel bw_conv_data_;
++        std::unique_ptr<Conv2DForwardDepthwiseSeparable> forward_;
+     };
+ 
+     class Conv2DBackwardFilterDepthwiseSeparable: public Conv2DBackwardFilter  {
+@@ -604,8 +1128,31 @@ namespace core {
+                 
+             }
+             
++            char const *split=std::getenv("DLPRIM_FILTER_SPLIT_K");
++            bool legacy_filter=split && std::strcmp(split,"1")==0;
++            if(legacy_filter) {
++                // Hundreds of filter coefficients already provide parallelism.
++                // Avoid dozens of near-empty groups per coefficient; keep a
++                // bounded amount of sequential work in each first-stage lane.
++                second_reduce_=1;
++                while(second_reduce_<256 && size_t(total)>
++                      size_t(dwsc_bw_filter_wg_)*second_reduce_*64)
++                    second_reduce_*=2;
++            }
++            const char *mode=std::getenv("DLPRIM_DW_FILTER_COALESCED");
++            bool coalesced=mode && std::strcmp(mode,"1")==0 && config.dtype==float_data &&
++                           config.kernel[0]==3;
++            if(coalesced) {
++                dwsc_bw_filter_wg_=64;
++                second_reduce_=1;
++                while(second_reduce_<32 && size_t(total)>size_t(64*second_reduce_*128))
++                    second_reduce_*=2;
++            }
+             cl::Program const &prog = gpu::Cache::instance().get_program(ctx,
+                         "depthwise_separable_bw_filter",
++                        "COALESCED_FILTER",int(coalesced),
++                        "SAFE_COORDINATES",int(legacy_filter),
++                        "IMAGE_ROWS",config.shape[2],"IMAGE_COLS",config.shape[3],
+                         "KERN",config_.kernel[0],
+                         "WG_SIZE",dwsc_bw_filter_wg_,
+                         "SECOND_REDUCE_SIZE",second_reduce_,
+@@ -685,6 +1232,11 @@ namespace core {
+     }
+     static bool is_winograd_compatible(Context &ctx,Conv2DSettings const &config)
+     {
++        // Diagnostic/compatibility escape hatch for runtimes with incorrect
++        // Winograd execution. Standard GEMM remains the default alternative.
++        char const *disable = std::getenv("DLPRIM_DISABLE_WINOGRAD");
++        if(disable && std::strcmp(disable,"1") == 0)
++            return false;
+         //if(!(ctx.is_amd() || ctx.is_nvidia() || ctx.is_intel()))
+         if(!(ctx.is_amd() || ctx.is_nvidia()))
+             return false;
+@@ -715,6 +1267,26 @@ namespace core {
+         bool dsc_recommended = dsc;
+ 
+         bool auto_algo = algo == "auto" || algo == "";
++        char const *stride2=std::getenv("DLPRIM_DEPTHWISE_STRIDE2");
++        if(auto_algo && stride2 && std::strcmp(stride2,"1")==0 &&
++           config.dtype==float_data && config.groups==config.channels_in && config.channels_out==config.channels_in &&
++           config.kernel[0]==3 && config.kernel[1]==3 && config.stride[0]==2 && config.stride[1]==2 &&
++           config.pad[0]==1 && config.pad[1]==1 && config.dilate[0]==1 && config.dilate[1]==1)
++            return std::unique_ptr<Conv2DForward>(new Conv2DForwardDepthwiseStride2(ctx,config,bias,activation));
++        char const *pointwise=std::getenv("DLPRIM_POINTWISE_REDUCE");
++        char const *tiny_pointwise=std::getenv("DLPRIM_TINY_POINTWISE");
++        bool pointwise_requested=pointwise && std::strcmp(pointwise,"1")==0 &&
++            config.channels_out==1 && config.channels_in<=32;
++        bool tiny_pointwise_requested=tiny_pointwise && std::strcmp(tiny_pointwise,"1")==0 &&
++            config.channels_out>=1 && config.channels_out<=4 && config.channels_in<=64;
++        if(auto_algo && (pointwise_requested || tiny_pointwise_requested) &&
++           config.dtype==float_data && config.groups==1 && config.channels_in>=1 &&
++           config.kernel[0]==1 && config.kernel[1]==1 &&
++           config.stride[0]==1 && config.stride[1]==1 &&
++           config.pad[0]==0 && config.pad[1]==0 &&
++           config.dilate[0]==1 && config.dilate[1]==1 &&
++           activation==StandardActivations::identity)
++            return std::unique_ptr<Conv2DForward>(new Conv2DForwardPointwiseReduce(ctx,config,bias));
+         
+         std::unique_ptr<Conv2DForward> r;
+         if((algo == "winograd" && win) || (auto_algo && win_recommended)) {
+@@ -730,6 +1302,35 @@ namespace core {
+     }
+     std::unique_ptr<Conv2DBackwardData> Conv2DBackwardData::create(Context &ctx,Conv2DSettings const &config,std::string const &algo)
+     {
++        char const *gather=std::getenv("DLPRIM_CONV_GATHER");
++        if(algo=="gather" || (gather && std::strcmp(gather,"1")==0))
++            return std::unique_ptr<Conv2DBackwardData>(new Conv2DBackwardDataGather(ctx,config));
++        char const *depthwise_stride2=std::getenv("DLPRIM_DW_STRIDE2_INPUT_GATHER");
++        if((algo.empty() || algo=="auto") && depthwise_stride2 &&
++           std::strcmp(depthwise_stride2,"1")==0 && config.dtype==float_data &&
++           config.channels_in>1 && config.groups==config.channels_in &&
++           config.channels_in==config.channels_out &&
++           config.kernel[0]==3 && config.kernel[1]==3 &&
++           config.stride[0]==2 && config.stride[1]==2 &&
++           config.pad[0]==1 && config.pad[1]==1 &&
++           config.dilate[0]==1 && config.dilate[1]==1)
++            return std::unique_ptr<Conv2DBackwardData>(new Conv2DBackwardDataGather(ctx,config));
++        char const *input=std::getenv("DLPRIM_INPUT_GRAD_GEMM");
++        if((algo.empty() || algo=="auto") && input && config.dtype==float_data && config.groups==1 &&
++           config.dilate[0]==1 && config.dilate[1]==1) {
++            bool pointwise=config.kernel[0]==1 && config.kernel[1]==1 &&
++                config.stride[0]==1 && config.stride[1]==1 && config.pad[0]==0 && config.pad[1]==0;
++            bool spatial=config.kernel[0]==3 && config.kernel[1]==3 &&
++                config.stride[0]==2 && config.stride[1]==2 && config.pad[0]==1 && config.pad[1]==1;
++            Shape out=get_output_shape(config,config.shape);
++            size_t bytes=size_t(config.channels_in)*config.channels_out*config.kernel[0]*config.kernel[1]*sizeof(float);
++            if(spatial)bytes+=size_t(out[0])*config.channels_in*9*out[2]*out[3]*sizeof(float);
++            bool requested=std::strcmp(input,"all")==0 ||
++                (pointwise && std::strcmp(input,"pointwise")==0) ||
++                (spatial && std::strcmp(input,"spatial")==0);
++            if(requested && (pointwise || spatial) && bytes<=512*1024*1024)
++                return std::unique_ptr<Conv2DBackwardData>(new Conv2DBackwardDataForwardGEMM(ctx,config));
++        }
+         bool win = is_winograd_compatible(ctx,config);
+         bool dsc = is_depthwise_separable_compatible(config);
+ 
+@@ -737,6 +1338,18 @@ namespace core {
+         bool dsc_recommended = dsc;
+ 
+         bool auto_algo = algo == "auto" || algo == "";
++        char const *reuse=std::getenv("DLPRIM_INPUT_GRAD_WINOGRAD");
++        if(auto_algo && win_recommended && config.dtype==float_data && reuse) {
++            int compact=-1;
++            if(std::strcmp(reuse,"small")==0 || std::strcmp(reuse,"1")==0)
++                compact=config.channels_in<=16 ? 1 : 0;
++            else if(std::strcmp(reuse,"compact")==0)compact=1;
++            else if(std::strcmp(reuse,"standard")==0)compact=0;
++            size_t pairs=size_t(config.channels_in)*config.channels_out;
++            size_t bytes=(((pairs*9+15)/16*16)+pairs*16)*sizeof(float);
++            if(compact>=0 && bytes<=64*1024*1024)
++                return std::unique_ptr<Conv2DBackwardData>(new Conv2DBackwardDataForwardWinograd(ctx,config,compact));
++        }
+         
+         std::unique_ptr<Conv2DBackwardData> r;
+         if((algo == "winograd" && win) || (auto_algo && win_recommended)) {
+@@ -752,9 +1365,18 @@ namespace core {
+     }
+     std::unique_ptr<Conv2DBackwardFilter> Conv2DBackwardFilter::create(Context &ctx,Conv2DSettings const &config,std::string const &algo)
+     {
++        // The specialized reduction avoids padding a depthwise 1x(KH*KW)
++        // filter matrix into 32x32 GEMM tiles. Its channel layout requires
++        // one output channel per input channel, not a depthwise multiplier.
++        bool dsc = is_depthwise_separable_compatible(config) &&
++                   config.channels_out == config.channels_in;
++        bool prefer_dsc = dsc && (algo.empty() || algo=="auto" || algo=="depthwise_separable");
++        char const *split=std::getenv("DLPRIM_FILTER_SPLIT_K");
++        if(((split && std::strcmp(split,"1")==0) || Conv2DBackwardFilterSplit::hd_candidate(config)) &&
++           config.dtype==float_data && !prefer_dsc &&
++           Conv2DBackwardFilterSplit::partitions(config)>1)
++            return std::unique_ptr<Conv2DBackwardFilter>(new Conv2DBackwardFilterSplit(ctx,config));
+         bool win = is_winograd_compatible(ctx,config); // no need to test min channels in/out since it is more optimal in any case
+-        bool dsc = is_depthwise_separable_compatible(config);
+-
+         bool win_recommended = win;
+         bool dsc_recommended = dsc;
+ 
+diff --git a/src/core/interpolate.cpp b/src/core/interpolate.cpp
+index 7773a15..c3a3683 100644
+--- a/src/core/interpolate.cpp
++++ b/src/core/interpolate.cpp
+@@ -43,7 +43,8 @@ namespace dlprim { namespace core {
+         }
+         
+         Context ctx(e);
+-        cl::Program const &prog = gpu::Cache::instance().get_program(ctx,"interpolate_2d");
++        cl::Program const &prog = gpu::Cache::instance().get_program(ctx,"interpolate_2d",
++            "BILINEAR_BACKWARD",int(bilinear && !fwd_bilinear));
+         cl::Kernel k(prog,(bilinear ? "bilinear" : "nearest_fwd"));
+ 
+         int bc = x_shape[0]*x_shape[1];
+@@ -106,7 +107,8 @@ namespace dlprim { namespace core {
+         }
+         
+         Context ctx(e);
+-        cl::Program const &prog = gpu::Cache::instance().get_program(ctx,"interpolate_2d");
++        cl::Program const &prog = gpu::Cache::instance().get_program(ctx,"interpolate_2d",
++            "BILINEAR_BACKWARD",0);
+         cl::Kernel k(prog,"nearest_bwd");
+ 
+         int bc = x_shape[0]*x_shape[1];
+diff --git a/src/core/loss.cpp b/src/core/loss.cpp
+index 10332bf..4f9646c 100644
+--- a/src/core/loss.cpp
++++ b/src/core/loss.cpp
+@@ -5,6 +5,8 @@
+ /// MIT License, see LICENSE.TXT
+ ///
+ ///////////////////////////////////////////////////////////////////////////////
++#include <cstdlib>
++#include <cstring>
+ #include <dlprim/core/activation.hpp>
+ #include <dlprim/gpu/program_cache.hpp>
+ 
+@@ -18,6 +20,32 @@ namespace core {
+         DLPRIM_CHECK(y.dtype() == x.dtype());
+         int sm_range=x.shape()[1];
+ 
++        // Opt in for the contiguous FP32 attention rows used by YOLO26n.
++        const char *attention_tile = std::getenv("DLPRIM_SOFTMAX_2040");
++        if(attention_tile && !log_softmax && sm_range == 2040 &&
++           (x.shape().size() == 2 || x.shape()[2] == 1)) {
++            int attention_wg = 0;
++            if(std::strcmp(attention_tile, "64") == 0)
++                attention_wg = 64;
++            else if(std::strcmp(attention_tile, "128") == 0)
++                attention_wg = 128;
++            else if(std::strcmp(attention_tile, "256") == 0)
++                attention_wg = 256;
++            if(attention_wg) {
++                Context ctx(e);
++                auto const &program = gpu::Cache::instance().get_program(
++                    ctx,"softmax","WG_SIZE",attention_wg,"SOFTMAX_2040",1);
++                cl::Kernel kernel(program,"softmax_2040");
++                int arg = 0;
++                x.set_arg(kernel,arg);
++                y.set_arg(kernel,arg);
++                e.queue().enqueueNDRangeKernel(
++                    kernel,cl::NullRange,cl::NDRange(x.shape()[0],attention_wg),
++                    cl::NDRange(1,attention_wg),e.events(),e.event("softmax_2040"));
++                return;
++            }
++        }
++
+         int wg_size;
+         if(sm_range <= 64)
+             wg_size = 64;
+@@ -63,6 +91,29 @@ namespace core {
+ 
+         int sm_range=dx.shape()[1];
+ 
++        const char *tile = std::getenv("DLPRIM_SOFTMAX_BACKWARD_2040");
++        if(tile && !log_softmax && sm_range == 2040 && factor == 0 &&
++           (dx.shape().size() == 2 || dx.shape()[2] == 1)) {
++            int width = 0;
++            for(int candidate : {64,128,256})
++                if(std::atoi(tile)==candidate)
++                    width=candidate;
++            if(width) {
++                Context ctx(e);
++                auto const &program = gpu::Cache::instance().get_program(
++                    ctx,"softmax","WG_SIZE",width,"SOFTMAX_2040",1);
++                cl::Kernel kernel(program,"softmax_backward_2040");
++                int arg = 0;
++                dx.set_arg(kernel,arg);
++                y.set_arg(kernel,arg);
++                dy.set_arg(kernel,arg);
++                e.queue().enqueueNDRangeKernel(
++                    kernel,cl::NullRange,cl::NDRange(dx.shape()[0],width),
++                    cl::NDRange(1,width),e.events(),e.event("softmax_backward_2040"));
++                return;
++            }
++        }
++
+         int wg_size;
+         if(sm_range <= 64)
+             wg_size = 64;
+diff --git a/src/core/pointwise.cpp b/src/core/pointwise.cpp
+index 8d125a0..f5bc05d 100644
+--- a/src/core/pointwise.cpp
++++ b/src/core/pointwise.cpp
+@@ -11,10 +11,46 @@
+ 
+ #include <iostream>
+ #include <sstream>
++#include <cstdlib>
++#include <cstring>
++#include <limits>
+ 
+ namespace dlprim {
+ namespace core {
+ 
++    static bool packed_byte_output(DataType dtype)
++    {
++        char const *flag=std::getenv("DLPRIM_PACKED_BYTE_OUTPUTS");
++        return flag && std::strcmp(flag,"1")==0 && (dtype==int8_data || dtype==uint8_data);
++    }
++
++    // Avoid r600 LLVM's broken global subword MSKOR writes. Math preserves its
++    // original scalar dtype, but stores into32-bit staging. Pack one owned word
++    // per work item and copy only the logical bytes with the OpenCL buffer API.
++    static void finish_packed_byte_output(Tensor &wide,Tensor &target,ExecutionContext const &e)
++    {
++        size_t count=target.shape().total_size();
++        if(count==0) return;
++        DLPRIM_CHECK(count<=std::numeric_limits<cl_uint>::max());
++        DLPRIM_CHECK(wide.device_offset()<=std::numeric_limits<cl_uint>::max());
++        Context ctx(e);
++        Tensor packed(ctx,Shape((count+3)/4),int32_data);
++        auto &program=gpu::Cache::instance().get_program(ctx,"pack_byte_output",
++                        "LITTLE_ENDIAN_BYTES",int(ctx.device().getInfo<CL_DEVICE_ENDIAN_LITTLE>()));
++        cl::Kernel kernel(program,"pack_byte_output");
++        kernel.setArg(0,wide.device_buffer());kernel.setArg(1,cl_uint(wide.device_offset()));
++        kernel.setArg(2,packed.device_buffer());kernel.setArg(3,cl_uint(packed.device_offset()));
++        kernel.setArg(4,cl_uint(count));
++        e.queue().enqueueNDRangeKernel(kernel,cl::NullRange,cl::NDRange((count+3)/4),cl::NullRange,
++                        e.events(),e.event("pack_byte_output"));
++        e.queue().enqueueCopyBuffer(packed.device_buffer(),target.device_buffer(),
++                        packed.device_offset()*sizeof(cl_uint),target.device_offset(),count,
++                        e.events(),e.event("copy_packed_byte_output"));
++        // The opt-in compatibility mode keeps both staging allocations alive
++        // until their last dependent command completes. No host value readback.
++        e.queue().finish();
++    }
++
+     void bind_as_dtype(cl::Kernel &k,int &p,double value,DataType dt)
+     {
+         switch(dt) {
+@@ -60,15 +96,20 @@ namespace core {
+             DLPRIM_CHECK(ref == ys[i].shape());
+             DLPRIM_CHECK(ref_type == ys[i].dtype());
+         }
++        std::vector<Tensor> actual_ys=ys;
++        if(packed_byte_output(ref_type)) {
++            for(size_t i=0;i<ys.size();i++)
++                actual_ys[i]=Tensor(ctx,ys[i].shape(),int32_data);
++        }
+         std::ostringstream params,loads,saves;
+         for(size_t i=0;i<xs.size();i++) {
+             params<<", __global dtype const *px" << i<< ", ulong px"<<i<<"_offset ";
+             loads<<"dtype x"<<i<<"=px"<<i<<"[index + px"<<i<<"_offset]; ";
+         }
+         for(size_t i=0;i<ys.size();i++) {
+-            params<<", __global dtype *py" << i<< ", ulong py"<<i<<"_offset ";
++            params<<", __global "<<(packed_byte_output(ref_type)?"int":"dtype")<<" *py" << i<< ", ulong py"<<i<<"_offset ";
+             loads<<"dtype y"<<i<<";";
+-            saves<<"py"<<i<<"[index]=y"<<i<<"; ";
++            saves<<"py"<<i<<"[index + py"<<i<<"_offset]=y"<<i<<"; ";
+         }
+ 
+         std::string param_dtype = data_type_to_opencl_param_type(ref_type);
+@@ -95,11 +136,15 @@ namespace core {
+         k.setArg(p++,total);
+         for(Tensor &x:xs)
+             x.set_arg(k,p);
+-        for(Tensor &y:ys)
++        for(Tensor &y:actual_ys)
+             y.set_arg(k,p);
+         for(double w:ws)
+             bind_as_dtype(k,p,w,ref_type);
+         e.queue().enqueueNDRangeKernel(k,cl::NullRange,cl::NDRange(total),cl::NullRange,e.events(),e.event("pointwise_exec"));
++        if(packed_byte_output(ref_type)) {
++            for(size_t i=0;i<ys.size();i++)
++                finish_packed_byte_output(actual_ys[i],ys[i],e);
++        }
+     }
+ 
+ 
+@@ -228,6 +273,11 @@ namespace core {
+             strides[i] = shapes[i].broadcast_strides(ref);
+         }
+         
++        std::vector<Tensor> actual_ys=ys;
++        for(size_t i=0;i<ys.size();i++) {
++            if(packed_byte_output(ys[i].dtype()))
++                actual_ys[i]=Tensor(ctx,ys[i].shape(),int32_data);
++        }
+         std::ostringstream params,loads,saves;
+         for(size_t i=0;i<xs.size();i++) {
+             std::string type = data_type_to_opencl_type(xs[i].dtype());
+@@ -237,7 +287,8 @@ namespace core {
+         }
+         for(size_t i=0;i<ys.size();i++) {
+             std::string type = data_type_to_opencl_type(ys[i].dtype());
+-            params<<", __global "<<type << " *py" << i<< ", ulong py"<<i<<"_offset";
++            std::string storage_type=packed_byte_output(ys[i].dtype())?"int":type;
++            params<<", __global "<<storage_type << " *py" << i<< ", ulong py"<<i<<"_offset";
+             loads<<type << " y"<<i<<";\\\n";
+             saves<<"py"<<i<<"[get_direct_offset(index,limit,py"<<i<<"_offset)]=y"<<i<<";\\\n";
+             loads<<"typedef " << type << " typeof_y" << i << ";\\\n";
+@@ -265,7 +316,7 @@ namespace core {
+             xs[i].set_arg(k,p);
+             bind_shape(k,p,strides[i]);
+         }
+-        for(Tensor &y:ys)
++        for(Tensor &y:actual_ys)
+             y.set_arg(k,p);
+         
+         for(size_t i=0;i<ws.size();i++) { 
+@@ -274,6 +325,10 @@ namespace core {
+         cl::NDRange range = get_broadcast_ndrange(ref);
+             
+         e.queue().enqueueNDRangeKernel(k,cl::NullRange,range,cl::NullRange,e.events(),e.event("pointwise_exec_broadcast"));
++        for(size_t i=0;i<ys.size();i++) {
++            if(packed_byte_output(ys[i].dtype()))
++                finish_packed_byte_output(actual_ys[i],ys[i],e);
++        }
+     }
+ 
+     ///
+diff --git a/src/core/pool.cpp b/src/core/pool.cpp
+index daaaaed..68c4293 100644
+--- a/src/core/pool.cpp
++++ b/src/core/pool.cpp
+@@ -9,6 +9,8 @@
+ #include <dlprim/core/common.hpp>
+ #include <dlprim/gpu/program_cache.hpp>
+ #include <iostream>
++#include <cstdlib>
++#include <string>
+ namespace dlprim {
+ namespace core {
+ 
+@@ -20,8 +22,10 @@ namespace core {
+             avg_(avg)
+         {
+             DLPRIM_CHECK(dt == float_data);
++            gather_ = !avg && std::getenv("DLPRIM_POOL_GATHER") && std::string(std::getenv("DLPRIM_POOL_GATHER")) == "1";
+             wg_size_ = 8;
+             cl::Program const &prog = gpu::Cache::instance().get_program(ctx,"pooling",
++                                        "POOL_GATHER",int(gather_),
+                                         "WG_SIZE",wg_size_,
+                                         "POOL_H",k[0],
+                                         "POOL_W",k[1],
+@@ -90,12 +94,13 @@ namespace core {
+             dx.set_arg(bwd_kernel_,p);
+ 
+             cl::NDRange wg(wg_size_,wg_size_,1);
+-            cl::NDRange gr = gpu::round_range(out_h,out_w,bc,wg);
++            cl::NDRange gr = gpu::round_range(gather_ ? in_h : out_h,gather_ ? in_w : out_w,bc,wg);
+ 
+             ex.queue().enqueueNDRangeKernel(bwd_kernel_,cl::NullRange,gr,wg,ec2.events(),ec2.event("pooling_bw"));
+         }
+     private:
+         Scale scal_;
++        bool gather_;
+         bool avg_;
+         int wg_size_;
+         cl::Kernel kernel_;
+diff --git a/src/core/util.cpp b/src/core/util.cpp
+index c4a698a..69089a7 100644
+--- a/src/core/util.cpp
++++ b/src/core/util.cpp
+@@ -9,6 +9,10 @@
+ #include <dlprim/gpu/program_cache.hpp>
+ 
+ #include <iostream>
++#include <cstdint>
++#include <limits>
++#include <cstdlib>
++#include <cstring>
+ 
+ namespace dlprim {
+ namespace core {
+@@ -21,13 +25,90 @@ namespace core {
+     {
+         DLPRIM_CHECK(shape.size() == src_strides.size());
+         DLPRIM_CHECK(shape.size() == dst_strides.size());
++        // Adjacent logical dimensions with contiguous strides on both sides
++        // can share one coordinate. This removes unnecessary integer division
++        // in sliced NCHW copies without changing addresses or pointer width.
++        char const *coalesce=std::getenv("DLPRIM_COALESCE_COPY");
++        if(coalesce && std::strcmp(coalesce,"1")==0 && shape.total_size()!=0) {
++            std::vector<size_t> sizes,from,to;
++            for(int i=0;i<shape.size();++i) {
++                if(shape[i]==1)continue;
++                if(!sizes.empty() && from.back()==shape[i]*src_strides[i] &&
++                   to.back()==shape[i]*dst_strides[i]) {
++                    sizes.back()*=shape[i];
++                    from.back()=src_strides[i];to.back()=dst_strides[i];
++                }
++                else {
++                    sizes.push_back(shape[i]);from.push_back(src_strides[i]);to.push_back(dst_strides[i]);
++                }
++            }
++            if(sizes.empty()) {sizes.push_back(1);from.push_back(1);to.push_back(1);}
++            shape=Shape::from_range(sizes.begin(),sizes.end());
++            src_strides=Shape::from_range(from.begin(),from.end());
++            dst_strides=Shape::from_range(to.begin(),to.end());
++        }
+         int dims = shape.size();
+         Context ctx(q);
++        char const *packed_bytes=std::getenv("DLPRIM_PACKED_BYTE_OUTPUTS");
++        if(packed_bytes && std::strcmp(packed_bytes,"1")==0 && dtype_src==dtype_dst &&
++           (dtype_dst==int8_data || dtype_dst==uint8_data)) {
++            // Byte copy via the OpenCL API avoids broken shader subword stores.
++            // Coalesce common contiguous suffixes; strides are host metadata,
++            // and tensor values remain in device buffers.
++            size_t total=shape.total_size();
++            if(total==0)return;
++            size_t span=1;
++            int outer=dims;
++            for(int i=dims-1;i>=0;i--) {
++                if(src_strides[i]!=span || dst_strides[i]!=span)break;
++                span*=shape[i];outer=i;
++            }
++            for(size_t row=0;row<total/span;row++) {
++                size_t index=row,from=src_offset,to=dst_offset;
++                for(int i=outer-1;i>=0;i--) {
++                    size_t coord=index%shape[i];index/=shape[i];
++                    from+=coord*src_strides[i];to+=coord*dst_strides[i];
++                }
++                if(src()==dst() && from==to)continue;
++                q.queue().enqueueCopyBuffer(src,dst,from,to,span,
++                                           q.events(),q.event("copy_strided_bytes"));
++            }
++            q.queue().finish();
++            return;
++        }
++
++        // Avoid broken/expensive 64-bit division on legacy 32-bit-address
++        // runtimes, but only if all logical coordinates and addresses fit.
++        uint64_t limit = std::numeric_limits<cl_uint>::max();
++        bool narrow_index = ctx.device().getInfo<CL_DEVICE_ADDRESS_BITS>() == 32;
++        uint64_t total = 1;
++        for(int i=0;i<dims;i++) {
++            if(shape[i] == 0 || shape[i] > limit / total) {narrow_index=false;break;}
++            total *= shape[i];
++        }
++        auto address_fits = [&](cl_ulong offset,Shape const &strides) {
++            if(offset > limit) return false;
++            for(int i=0;i<dims;i++) {
++                if(shape[i] > limit || strides[i] > limit) return false;
++                uint64_t extent = shape[i] ? shape[i]-1 : 0;
++                if(extent && strides[i] > (limit-offset)/extent) return false;
++                offset += extent * strides[i];
++            }
++            return true;
++        };
++        narrow_index = narrow_index && address_fits(src_offset,src_strides) && address_fits(dst_offset,dst_strides);
++        char const *flat_option=std::getenv("DLPRIM_FLAT_STRIDED_COPY");
++        bool flat3=narrow_index && total<=limit-31 && dims==3 && flat_option && std::strcmp(flat_option,"1")==0;
+         bool use_io_type = dtype_src == dtype_dst;
+         cl::Program const &prog = gpu::Cache::instance().get_program(ctx,"copy_strided",
+                                 "dtype_src",data_type_to_opencl_type(dtype_src,use_io_type),
+                                 "dtype_tgt",data_type_to_opencl_type(dtype_dst,use_io_type),
+-                                "DIMS",dims);
++                                "DIMS",dims,
++                                "INDEX32",int(narrow_index),
++                                "COPY_NO_DIVISION",int(narrow_index && dims >= 4),
++                                "COPY_FLAT3",int(flat3),
++                                "FLAT_D1",flat3 ? shape[1] : size_t(1),
++                                "FLAT_D2",flat3 ? shape[2] : size_t(1));
+         cl::NDRange range;
+         switch(dims) {
+         case 1: range = cl::NDRange(shape[0]); break;
+@@ -41,18 +122,31 @@ namespace core {
+         default:
+             throw NotImplementedError("Invalid dimentsions count for strided copy " + std::to_string(dims));
+         }
++        if(narrow_index && dims >= 4)
++            range = cl::NDRange(shape[dims-1],shape[dims-2],shape[dims-3]);
+         cl::Kernel k(prog,"copy");
+         int p=0;
++        auto set_index = [&](cl_ulong value) {
++            if(narrow_index) k.setArg(p++,cl_uint(value));
++            else k.setArg(p++,value);
++        };
+         for(int i=0;i<dims;i++) {
+-            k.setArg(p++,cl_ulong(shape[i]));
+-            k.setArg(p++,cl_ulong(src_strides[i]));
+-            k.setArg(p++,cl_ulong(dst_strides[i]));
++            set_index(shape[i]);
++            set_index(src_strides[i]);
++            set_index(dst_strides[i]);
+         }
+         k.setArg(p++,src);
+-        k.setArg(p++,src_offset);
++        set_index(src_offset);
+         k.setArg(p++,dst);
+-        k.setArg(p++,dst_offset);
+-        q.queue().enqueueNDRangeKernel(k,cl::NullRange,range,cl::NullRange,q.events(),q.event("copy_strided"));
++        set_index(dst_offset);
++        cl::NDRange local=cl::NullRange;
++        if(flat3) {
++            size_t width=std::min(size_t(32),ctx.device().getInfo<CL_DEVICE_MAX_WORK_GROUP_SIZE>());
++            width=std::min(width,ctx.device().getInfo<CL_DEVICE_MAX_WORK_ITEM_SIZES>()[0]);
++            range=cl::NDRange((total+width-1)/width*width);
++            local=cl::NDRange(width);
++        }
++        q.queue().enqueueNDRangeKernel(k,cl::NullRange,range,local,q.events(),q.event("copy_strided"));
+ 
+     }
+ }
+diff --git a/src/gemm.cpp b/src/gemm.cpp
+index 6b66329..b442e9f 100644
+--- a/src/gemm.cpp
++++ b/src/gemm.cpp
+@@ -9,6 +9,8 @@
+ #include <dlprim/gpu/program_cache.hpp>
+ #include <dlprim/ops/scal.hpp>
+ #include <iostream>
++#include <cstdlib>
++#include <cstring>
+ 
+ namespace dlprim {
+ namespace gpu {
+@@ -138,7 +140,34 @@ namespace gpu {
+                     }
+                 }
+             }
+-            if(!batch_gemm_) {
++            // Experimental r600 profile: reduce register/LDS pressure and use
++            // one 64-thread wave per workgroup. The filter-gradient M256/N1152/
++            // K128 case hangs at96x96 but matches CPU with this32x32 variant.
++            char const *small_tiles=std::getenv("DLPRIM_GEMM_SMALL_TILES");
++            if(small_tiles && std::strcmp(small_tiles,"1")==0 && !host_has_intel_subgroups_) {
++                tile_size_m_=tile_size_n_=32;
++                block_size_m_=block_size_n_=4;
++                tile_size_k_=32;
++                off_=0;
++            }
++            const char *value_tile = std::getenv("DLPRIM_ATTN_VALUE_TILE");
++            if(value_tile && batch_gemm_ && actual_gemm && M==64 && N==2040 && K==2040 &&
++               !host_has_intel_subgroups_) {
++                if(std::strcmp(value_tile,"32x32k16")==0) {
++                    tile_size_m_=32;tile_size_n_=32;tile_size_k_=16;
++                    block_size_m_=4;block_size_n_=4;off_=0;
++                }
++                else if(std::strcmp(value_tile,"64x64k16")==0) {
++                    tile_size_m_=64;tile_size_n_=64;tile_size_k_=16;
++                    block_size_m_=4;block_size_n_=4;off_=0;
++                }
++                else if(std::strcmp(value_tile,"64x64k32")==0) {
++                    tile_size_m_=64;tile_size_n_=64;tile_size_k_=32;
++                    block_size_m_=4;block_size_n_=4;off_=0;
++                }
++            }
++            char const *disable_split_k = std::getenv("DLPRIM_DISABLE_SPLIT_K");
++            if(!batch_gemm_ && !(disable_split_k && std::strcmp(disable_split_k,"1") == 0)) {
+                 int cores = ctx.estimated_core_count();
+                 if(cores >= 256 && M * N / (block_size_m_ * block_size_n_) < 4 * cores && K > M*16 && K > N*16) {
+                     reduce_k_ = 8;
+@@ -444,6 +473,125 @@ namespace gpu {
+                     int im2col_chan = 0) :
+                 StandardSGEMMBase(ctx,M,N,K,false,false,act)
+         {
++            char const *small_k=std::getenv("DLPRIM_SMALL_K");
++            if(op_mode==GemmOpMode::forward && small_k && std::strcmp(small_k,"1")==0 &&
++               !host_has_intel_subgroups_ && M<=16 && K<=32)
++                tile_size_k_=K<=16 ? 16 : 32;
++            char const *wide=std::getenv("DLPRIM_FORWARD_GEMM_N");
++            bool balanced=wide && std::strcmp(wide,"balanced")==0;
++            int wide_n=balanced ? 64 : (wide ? std::atoi(wide) : 0);
++            if(op_mode==GemmOpMode::forward && !host_has_intel_subgroups_ && M>=32 &&
++               (!balanced || M>=64 || (kernel[0]==1 && kernel[1]==1)) &&
++               (wide_n==64 || wide_n==128 || wide_n==256)) {
++                tile_size_m_=M>=64 ? 64 : 32;
++                tile_size_n_=wide_n;
++                block_size_m_=4;
++                block_size_n_=wide_n/16;
++                tile_size_k_=16;
++                off_=0;
++            }
++            char const *pad_lds=std::getenv("DLPRIM_GEMM_PAD_LDS");
++            if(op_mode==GemmOpMode::forward && M>=32 && !host_has_intel_subgroups_ &&
++               pad_lds && std::strcmp(pad_lds,"1")==0)off_=1;
++            // Independent, opt-in pointwise experiments. Keep all other
++            // convolution modes, layouts and the Intel subgroup path unchanged.
++            auto enabled=[](char const *name) {
++                char const *value=std::getenv(name);
++                return value && std::strcmp(value,"1")==0;
++            };
++            bool pointwise_forward=op_mode==GemmOpMode::forward && !host_has_intel_subgroups_ &&
++                kernel[0]==1 && kernel[1]==1 && stride[0]==1 && stride[1]==1 &&
++                padding[0]==0 && padding[1]==0 && dilate[0]==1 && dilate[1]==1 && groups==1;
++            bool coalesced_b=pointwise_forward && enabled("DLPRIM_GEMM_COALESCED_B");
++            bool skip_final_barrier=pointwise_forward && enabled("DLPRIM_GEMM_SKIP_FINAL_BARRIER");
++            bool static_shape=pointwise_forward && (M==32 || M==64) && (K==32 || K==64) &&
++                enabled("DLPRIM_GEMM_STATIC_SHAPE");
++            bool vector_stores=pointwise_forward && enabled("DLPRIM_GEMM_VECTOR_STORES");
++            bool vector_stores2=pointwise_forward && enabled("DLPRIM_GEMM_VECTOR_STORES2");
++            char const *narrow=std::getenv("DLPRIM_GEMM_NARROW_N");
++            int narrow_n=narrow ? std::atoi(narrow) : 0;
++            if(pointwise_forward && M==16 && reduce_k_==1 && (narrow_n==32 || narrow_n==64)) {
++                tile_size_m_=16;tile_size_n_=narrow_n;
++                block_size_m_=2;block_size_n_=4;off_=0;
++            }
++            if(pointwise_forward && M==32 && K==16 && enabled("DLPRIM_GEMM_SELECTIVE_TILE")) {
++                tile_size_m_=tile_size_n_=32;
++                block_size_m_=block_size_n_=4;
++                tile_size_k_=32;
++                off_=0;
++            }
++            // Shape-limited tile experiments, independently selectable for
++            // common output-channel counts. No change to the default dispatch.
++            char const *tile_name=M==32 ? "DLPRIM_GEMM_TILE32" :
++                                  M==64 ? "DLPRIM_GEMM_TILE64" :
++                                  M==80 ? "DLPRIM_GEMM_TILE80" :
++                                  M==128 ? "DLPRIM_GEMM_TILE128" :
++                                  M==256 ? "DLPRIM_GEMM_TILE256" : nullptr;
++            char const *tile=tile_name ? std::getenv(tile_name) : nullptr;
++            if(pointwise_forward && reduce_k_==1 && tile) {
++                int tm=0,tn=0,tk=0,bm=0;
++                if(std::strcmp(tile,"16x64k16b2")==0) {tm=16;tn=64;tk=16;bm=2;}
++                else if(std::strcmp(tile,"32x64k16b2")==0) {tm=32;tn=64;tk=16;bm=2;}
++                else if(std::strcmp(tile,"32x64k16b4")==0) {tm=32;tn=64;tk=16;bm=4;}
++                else if(std::strcmp(tile,"64x64k16b4")==0) {tm=64;tn=64;tk=16;bm=4;}
++                else if(std::strcmp(tile,"32x32k16b2")==0) {tm=32;tn=32;tk=16;bm=2;}
++                else if(std::strcmp(tile,"32x32k16b4")==0) {tm=32;tn=32;tk=16;bm=4;}
++                else if(std::strcmp(tile,"32x64k8b4")==0) {tm=32;tn=64;tk=8;bm=4;}
++                else if(std::strcmp(tile,"32x64k32b4")==0) {tm=32;tn=64;tk=32;bm=4;}
++                else if(std::strcmp(tile,"64x64k8b4")==0) {tm=64;tn=64;tk=8;bm=4;}
++                else if(std::strcmp(tile,"64x64k32b4")==0) {tm=64;tn=64;tk=32;bm=4;}
++                else if(M==80 && std::strcmp(tile,"80x64k16b5")==0) {tm=80;tn=64;tk=16;bm=5;}
++                else if(M==80 && std::strcmp(tile,"80x32k16b5")==0) {tm=80;tn=32;tk=16;bm=5;}
++                else if(M==80 && std::strcmp(tile,"80x64k16b10")==0) {tm=80;tn=64;tk=16;bm=10;}
++                else if(M==80 && std::strcmp(tile,"80x64k8b5")==0) {tm=80;tn=64;tk=8;bm=5;}
++                else if(std::strcmp(tile,"128x64k16b8")==0) {tm=128;tn=64;tk=16;bm=8;}
++                else if(std::strcmp(tile,"128x32k16b8")==0) {tm=128;tn=32;tk=16;bm=8;}
++                if(tm) {
++                    tile_size_m_=tm;tile_size_n_=tn;tile_size_k_=tk;
++                    block_size_m_=bm;block_size_n_=4;off_=0;
++                }
++            }
++            if(pointwise_forward && reduce_k_==1 && M==32 && enabled("DLPRIM_GEMM_SHAPE_TUNING") &&
++               ((im2col_chan==32640 && (K==32 || K==64 || K==128)) ||
++                (im2col_chan==130560 && (K==32 || K==48)) ||
++                (im2col_chan==8160 && K==64))) {
++                // Measured Tonga family: short reductions keep broader tiles;
++                // longer reductions benefit from a smaller working set.
++                tile_size_m_=32;tile_size_n_=32;tile_size_k_=16;
++                block_size_m_=K==32 && im2col_chan<130560 ? 2 : 4;
++                block_size_n_=4;off_=0;
++            }
++            if(pointwise_forward && reduce_k_==1 && M==80 &&
++               (((K==64 || K==80) && (im2col_chan==32640 || im2col_chan==8160 || im2col_chan==2040)) ||
++                (K==128 && im2col_chan==8160)) &&
++               enabled("DLPRIM_GEMM_EXACT80")) {
++                tile_size_m_=80;tile_size_n_=64;tile_size_k_=16;
++                block_size_m_=5;block_size_n_=4;off_=0;
++            }
++            if(pointwise_forward && reduce_k_==1 && enabled("DLPRIM_ATTN_MODEL_POINTWISE")) {
++                int reduction_tile=0;
++                if(M==64 && K==48 && im2col_chan==130560)
++                    reduction_tile=8;
++                else if(M==64 && K==256 && im2col_chan==32640)
++                    reduction_tile=16;
++                else if((M==128 && (K==192 || K==384) && im2col_chan==8160) ||
++                        (M==256 && (K==384 || K==512) && im2col_chan==2040))
++                    reduction_tile=32;
++                if(reduction_tile) {
++                    tile_size_m_=64;tile_size_n_=64;tile_size_k_=reduction_tile;
++                    block_size_m_=4;block_size_n_=4;off_=0;
++                }
++            }
++            // Measured Tonga B6 input-gradient GEMMs with long spatial axes.
++            if(pointwise_forward && reduce_k_==1 && act==StandardActivations::identity &&
++               N==6*im2col_chan && enabled("DLPRIM_V26_GEMM_TUNED") &&
++               ((im2col_chan==130560 && M==48 && K==64) ||
++                (im2col_chan==8160 && M==1152 && K==128))) {
++                tile_size_m_=tile_size_n_=64;
++                tile_size_k_=32;
++                block_size_m_=block_size_n_=4;
++                off_=0;
++            }
+             cl::Program const &prog = Cache::instance().get_program(ctx,"sgemm",
+                                         "TILE_SIZE_M",tile_size_m_,
+                                         "TILE_SIZE_N",tile_size_n_,
+@@ -468,6 +616,12 @@ namespace gpu {
+                                         "IMG_COLS",tgt_cols,
+                                         "IMG_ROWS",tgt_rows,
+                                         "REDUCE_K",reduce_k_,
++                                        "GEMM_COALESCED_B",int(coalesced_b),
++                                        "GEMM_SKIP_FINAL_BARRIER",int(skip_final_barrier),
++                                        "GEMM_STATIC_M",static_shape ? M : 0,
++                                        "GEMM_STATIC_K",static_shape ? K : 0,
++                                        "GEMM_VECTOR_STORES",int(vector_stores),
++                                        "GEMM_VECTOR_STORES2",int(vector_stores2),
+                                         "ACTIVATION",int(act));
+             if(op_mode == GemmOpMode::backward_data) {
+                 DLPRIM_CHECK(act == StandardActivations::identity);
+diff --git a/src/kernels/activation.cl b/src/kernels/activation.cl
+index 2327e24..cde65ce 100644
+--- a/src/kernels/activation.cl
++++ b/src/kernels/activation.cl
+@@ -19,6 +19,7 @@ void activation(ulong size,__global dtype *a,ulong a_offset, __global dtype *c,u
+ }
+ 
+ 
++#if ACTIVATION != ACTIVATION_SILU
+ __kernel
+ void activation_diff(ulong size,__global dtype *y,ulong y_offset, __global dtype *dy,ulong dy_offset,__global dtype *dx,ulong dx_offset,dtype beta)
+ {
+@@ -36,5 +37,6 @@ void activation_diff(ulong size,__global dtype *y,ulong y_offset, __global dtype
+     else
+         dx[pos] = mad(dx[pos],beta,diff);
+ }
++#endif
+ 
+ 
+diff --git a/src/kernels/bn_sums.cl b/src/kernels/bn_sums.cl
+index c1477ec..76cda73 100644
+--- a/src/kernels/bn_sums.cl
++++ b/src/kernels/bn_sums.cl
+@@ -63,14 +63,34 @@ void compute(
+     int items = batch * HW;
+     const int wg_size2 = WG_SIZE * SECOND_REDUCE_SIZE;
+     int items_per_wg = (items + wg_size2 - 1) / wg_size2;
++#if (BACKWARD == 1 && COALESCED_BACKWARD) || (BACKWARD == 0 && COALESCED_FORWARD)
++    int my_start = get_global_id(0);
++#else
+     int my_start = items_per_wg * get_global_id(0); // it is same as local id for 1stage reduce
+     int my_end   = min(my_start + items_per_wg,items);
+ 
++#endif
++
+     float sum1 = 0;
+     float sum2 = 0;
+     int b  = my_start / HW;
+     int rc = my_start % HW;
+ 
++#if (BACKWARD == 1 && COALESCED_BACKWARD) || (BACKWARD == 0 && COALESCED_FORWARD)
++    // Adjacent lanes read adjacent pixels; partitions cover disjoint strides.
++    for(int index = my_start; index < items; index += wg_size2) {
++        int pos = (index / HW) * channels * HW + index % HW;
++#if BACKWARD == 1
++        float xv = x[pos], dyv = dy[pos];
++        sum1 += xv * dyv;
++        sum2 += dyv;
++#else
++        float xv = x[pos];
++        sum1 += xv;
++        sum2 += xv * xv;
++#endif
++    }
++#else
+     #pragma unroll(16)
+     for(int index = my_start;index <my_end;index ++) {
+         if(b < batch && rc < HW) {
+@@ -93,6 +113,8 @@ void compute(
+         }
+     }
+ 
++#endif
++
+     REDUCE_PREPARE_X2(WG_SIZE,float);
+ 
+     float2 sums=(float2)(sum1,sum2);
+diff --git a/src/kernels/bn_utils.cl b/src/kernels/bn_utils.cl
+index 2397037..afe4c93 100644
+--- a/src/kernels/bn_utils.cl
++++ b/src/kernels/bn_utils.cl
+@@ -165,6 +165,38 @@ void forward(int batches,int channels,int HW,
+     y[y_offset + pos] = x[x_offset + pos] * A[A_offset + f] + B[B_offset + f];
+ }
+ 
++__kernel
++void forward_silu(int batches,int channels,int HW,
++             __global float const *x,ulong  x_offset,
++             __global float *y,      ulong  y_offset,
++             __global float const *A,ulong A_offset,
++             __global float const *B,ulong B_offset)
++{
++    int b  = get_global_id(DIM_B);
++    int f  = get_global_id(DIM_F);
++    int rc = get_global_id(DIM_RC);
++    if(b >= batches || f >= channels || rc >= HW)
++        return;
++    int pos = (b * channels + f) * HW + rc;
++    float value = x[x_offset + pos] * A[A_offset + f] + B[B_offset + f];
++    y[y_offset + pos] = value / (1.0f + exp(-value));
++}
++
++__kernel
++void bn_silu_recompute_grad(int channels,int hw,
++                           __global const float *x,ulong xo,
++                           __global const float *dy,ulong go,
++                           __global const float *a,ulong ao,
++                           __global const float *b,ulong bo,
++                           __global float *out,ulong oo)
++{
++    const int f=get_global_id(1);
++    const ulong pos=((ulong)get_global_id(2)*channels+f)*hw+get_global_id(0);
++    const float value=x[xo+pos]*a[ao+f]+b[bo+f];
++    const float s=1.0f/(1.0f+exp(-value));
++    out[oo+pos]=dy[go+pos]*s*(1.0f+value*(1.0f-s));
++}
++
+ __kernel
+ void backward_test(int batches,int channels,int HW,
+              __global float *dx,ulong  dx_offset,
+diff --git a/src/kernels/conv_input_forward.cl b/src/kernels/conv_input_forward.cl
+new file mode 100644
+index 0000000..c4dabc8
+--- /dev/null
++++ b/src/kernels/conv_input_forward.cl
+@@ -0,0 +1,81 @@
++#include "defs.h"
++// Transpose flattened [CO, CI*KH*KW] weights entirely on the device.
++__kernel void input_grad_transpose(__global const float *w,ulong wo,
++                                   __global float *t,ulong to)
++{
++    uint j=get_global_id(0),oc=get_global_id(1);
++    if(j>=CI*KH*KW || oc>=CO)return;
++    t[to+(ulong)j*CO+oc]=w[wo+(ulong)oc*CI*KH*KW+j];
++}
++
++// For stride1/pad1 3x3, dx is forward convolution of dy with channel-
++// transposed weights rotated by180degrees. No activation or bias is applied.
++__kernel void input_grad_winograd_weights(__global const float *w,ulong wo,
++                                         __global float *t,ulong to)
++{
++    uint j=get_global_id(0),oc=get_global_id(1);
++    if(j>=CI*9 || oc>=CO)return;
++    uint ci=j/9,k=j%9;
++    t[to+((ulong)ci*CO+oc)*9+k]=w[wo+((ulong)oc*CI+ci)*9+8-k];
++}
++
++// Gather the already channel-reduced patch gradients. Each lane owns one
++// input pixel, so overlapping spatial contributions need no atomics.
++__kernel void input_grad_col2im(__global const float *col,ulong offset,
++                               __global float *dx,ulong dxo,float factor)
++{
++    uint p=get_global_id(0),bc=get_global_id(1);
++    if(p>=IH*IW)return;
++    uint ci=bc%CI,b=bc/CI;
++    int iy=p/IW,ix=p%IW;
++    float sum=0.0f;
++    #pragma unroll
++    for(int ky=0;ky<KH;ky++) {
++        int y=iy+PH-ky;
++        if(y<0 || y%SH || y/SH>=OH)continue;
++        #pragma unroll
++        for(int kx=0;kx<KW;kx++) {
++            int x=ix+PW-kx;
++            if(x<0 || x%SW || x/SW>=OW)continue;
++            ulong pos=offset+(((ulong)b*CI+ci)*KH*KW+ky*KW+kx)*OH*OW+(y/SH)*OW+x/SW;
++            sum+=col[pos];
++        }
++    }
++    ulong pos=dxo+(ulong)bc*IH*IW+p;
++    if(factor!=0.0f)sum+=factor*dx[pos];
++    dx[pos]=sum;
++}
++
++#if KH == 3 && KW == 3 && SH == 2 && SW == 2 && PH == 1 && PW == 1 && IH == 2*OH && IW == 2*OW
++// An output owner writes both input parities for one strided lattice cell.
++__kernel void input_grad_col2im_tile2(__global const float *col,ulong offset,
++                                     __global float *dx,ulong dxo,float factor)
++{
++    uint p=get_global_id(0),bc=get_global_id(1);
++    if(p>=OH*OW)return;
++
++    uint y=p/OW,x=p%OW;
++    const uint plane=OH*OW;
++    col+=offset+(ulong)bc*9*plane+p;
++    const bool right=x+1<OW;
++    const bool bottom=y+1<OH;
++
++    float even_even=col[4*plane];
++    float even_odd=(right ? col[3*plane+1] : 0.0f)+col[5*plane];
++    float odd_even=(bottom ? col[plane+OW] : 0.0f)+col[7*plane];
++    float odd_odd=(right && bottom ? col[OW+1] : 0.0f);
++    odd_odd+=bottom ? col[2*plane+OW] : 0.0f;
++    odd_odd+=right ? col[6*plane+1] : 0.0f;
++    odd_odd+=col[8*plane];
++
++    float2 upper=(float2)(even_even,even_odd);
++    float2 lower=(float2)(odd_even,odd_odd);
++    dx+=dxo+(ulong)bc*IH*IW+2*y*IW+2*x;
++    if(factor!=0.0f) {
++        upper+=factor*vload2(0,dx);
++        lower+=factor*vload2(0,dx+IW);
++    }
++    vstore2(upper,0,dx);
++    vstore2(lower,0,dx+IW);
++}
++#endif
+diff --git a/src/kernels/conv_input_gather.cl b/src/kernels/conv_input_gather.cl
+new file mode 100644
+index 0000000..87e4501
+--- /dev/null
++++ b/src/kernels/conv_input_gather.cl
+@@ -0,0 +1,141 @@
++///////////////////////////////////////////////////////////////////////////////
++// Atomic-free input gradients: one pixel or a selected four-pixel group per item.
++// FP32 compatibility path; tensor addresses and work coordinates fit uint32.
++///////////////////////////////////////////////////////////////////////////////
++inline __attribute__((always_inline)) uint2 conv_divmod(uint n,uint d)
++{
++    // Compile-time convolution dimensions normally make this a constant branch.
++    if(d && (d & (d-1u))==0u) {
++        uint shift=0;
++        for(uint value=d;value>1u;value>>=1u)++shift;
++        return (uint2)(n>>shift,n&(d-1u));
++    }
++    uint q=0,r=0;
++    for(int b=31;b>=0;--b) {
++        uint carry=r>>31;
++        r=(r<<1)|((n>>b)&1u);
++        if(carry || r>=d) {r-=d;q|=1u<<b;}
++    }
++    return (uint2)(q,r);
++}
++__kernel void conv_input_gather(uint batch,uint ih,uint iw,uint oh,uint ow,
++                               __global float *dx,uint dxo,
++                               __global const float *w,uint wo,
++                               __global const float *dy,uint dyo,float factor)
++{
++#if GATHER_SPATIAL4
++    uint work_x=get_global_id(0),y=get_global_id(1),bc=get_global_id(2);
++#if SW == 2
++    // Four inputs of the same parity map to adjacent output-gradient pixels.
++    uint x=(work_x>>1)*8u+(work_x&1u);
++#else
++    uint x=work_x*4u;
++#endif
++    if(x>=iw || y>=ih || bc>=batch*CI)return;
++    uint2 channel=conv_divmod(bc,CI);
++    uint b=channel.x,ci=channel.y;
++    uint2 group=conv_divmod(ci,CI/GROUPS);
++    float4 sum=(float4)(0.0f);
++    for(int ky=0;ky<KH;++ky) {
++        int yr=(int)y+PH-ky*DH;
++        if(yr<0)continue;
++        uint2 row=conv_divmod((uint)yr,SH);
++        if(row.y || row.x>=oh)continue;
++        for(int kx=0;kx<KW;++kx) {
++            int xr=(int)x+PW-kx*DW;
++#if SW == 2
++            if(((uint)xr&1u)!=0u)continue;
++#endif
++            int col=xr<0 ? -1 : (int)conv_divmod((uint)xr,SW).x;
++            if(col<0) {
++                for(uint ocg=0;ocg<CO/GROUPS;++ocg) {
++                    uint oc=group.x*(CO/GROUPS)+ocg;
++                    uint wi=wo+((oc*(CI/GROUPS)+group.y)*KH+ky)*KW+kx;
++                    uint base=dyo+((b*CO+oc)*oh+row.x)*ow;
++                    float weight=w[wi];
++                    float4 values=vload4(0,dy+base);
++                    sum.s1+=weight*values.s0;
++                    sum.s2+=weight*values.s1;
++                    sum.s3+=weight*values.s2;
++                }
++            }
++            else if(col+3>=(int)ow) {
++                for(uint ocg=0;ocg<CO/GROUPS;++ocg) {
++                    uint oc=group.x*(CO/GROUPS)+ocg;
++                    uint wi=wo+((oc*(CI/GROUPS)+group.y)*KH+ky)*KW+kx;
++                    uint base=dyo+((b*CO+oc)*oh+row.x)*ow;
++                    float weight=w[wi];
++                    float4 values=vload4(0,dy+base+(uint)col-1u);
++                    sum.s0+=weight*values.s1;
++                    sum.s1+=weight*values.s2;
++                    sum.s2+=weight*values.s3;
++                }
++            }
++            else {
++                for(uint ocg=0;ocg<CO/GROUPS;++ocg) {
++                    uint oc=group.x*(CO/GROUPS)+ocg;
++                    uint wi=wo+((oc*(CI/GROUPS)+group.y)*KH+ky)*KW+kx;
++                    uint base=dyo+((b*CO+oc)*oh+row.x)*ow;
++                    float weight=w[wi];
++                    sum+=weight*vload4(0,dy+base+(uint)col);
++                }
++            }
++        }
++    }
++    uint pos=dxo+((b*CI+ci)*ih+y)*iw+x;
++#if SW == 2
++    if(factor!=0) {
++        sum.s0+=factor*dx[pos];sum.s1+=factor*dx[pos+2];
++        sum.s2+=factor*dx[pos+4];sum.s3+=factor*dx[pos+6];
++    }
++    dx[pos]=sum.s0;dx[pos+2]=sum.s1;dx[pos+4]=sum.s2;dx[pos+6]=sum.s3;
++#else
++    if(factor!=0)sum+=factor*vload4(0,dx+pos);
++    vstore4(sum,0,dx+pos);
++#endif
++#elif GATHER_VECTOR4
++    uint x=get_global_id(0)*4u,y=get_global_id(1),bc=get_global_id(2);
++    if(x>=iw || y>=ih || bc>=batch*CI)return;
++    uint2 channel=conv_divmod(bc,CI);
++    uint b=channel.x,ci=channel.y;
++    uint2 group=conv_divmod(ci,CI/GROUPS);
++    float4 sum=(float4)(0.0f);
++    for(uint ocg=0;ocg<CO/GROUPS;++ocg) {
++        uint oc=group.x*(CO/GROUPS)+ocg;
++        uint wi=wo+oc*(CI/GROUPS)+group.y;
++        uint di=dyo+((b*CO+oc)*oh+y)*ow+x;
++        sum+=w[wi]*vload4(0,dy+di);
++    }
++    uint pos=dxo+((b*CI+ci)*ih+y)*iw+x;
++    if(factor!=0)sum+=factor*vload4(0,dx+pos);
++    vstore4(sum,0,dx+pos);
++#else
++    uint x=get_global_id(0),y=get_global_id(1),bc=get_global_id(2);
++    if(x>=iw || y>=ih || bc>=batch*CI)return;
++    uint2 channel=conv_divmod(bc,CI);
++    uint b=channel.x,ci=channel.y;
++    uint2 group=conv_divmod(ci,CI/GROUPS);
++    float sum=0;
++    for(int ky=0;ky<KH;++ky) {
++        int yr=(int)y+PH-ky*DH;
++        if(yr<0)continue;
++        uint2 row=conv_divmod((uint)yr,SH);
++        if(row.y || row.x>=oh)continue;
++        for(int kx=0;kx<KW;++kx) {
++            int xr=(int)x+PW-kx*DW;
++            if(xr<0)continue;
++            uint2 col=conv_divmod((uint)xr,SW);
++            if(col.y || col.x>=ow)continue;
++            for(uint ocg=0;ocg<CO/GROUPS;++ocg) {
++                uint oc=group.x*(CO/GROUPS)+ocg;
++                uint wi=((oc*(CI/GROUPS)+group.y)*KH+ky)*KW+kx;
++                uint di=((b*CO+oc)*oh+row.x)*ow+col.x;
++                sum+=w[wo+wi]*dy[dyo+di];
++            }
++        }
++    }
++    uint pos=dxo+((b*CI+ci)*ih+y)*iw+x;
++    if(factor==0)dx[pos]=sum;
++    else dx[pos]=factor*dx[pos]+sum;
++#endif
++}
+diff --git a/src/kernels/conv_pointwise_reduce.cl b/src/kernels/conv_pointwise_reduce.cl
+new file mode 100644
+index 0000000..f3f086e
+--- /dev/null
++++ b/src/kernels/conv_pointwise_reduce.cl
+@@ -0,0 +1,26 @@
++// Few output channels: spatial lanes read contiguous data, with no padded M tile.
++__kernel void pointwise_reduce(uint plane,
++    __global const float *input, ulong input_offset,
++    __global const float *weights, ulong weight_offset,
++#if BIAS
++    __global const float *bias, ulong bias_offset,
++#endif
++    __global float *output, ulong output_offset, float scale)
++{
++    uint i=get_global_id(0);
++    uint bc=get_global_id(1);
++    uint b=bc/OUTPUT_CHANNELS,oc=bc%OUTPUT_CHANNELS;
++    if(i>=plane)return;
++    ulong base=input_offset+(ulong)b*CHANNELS*plane+i;
++    ulong row=weight_offset+(ulong)oc*CHANNELS;
++    float sum=0.0f;
++    #pragma unroll
++    for(uint c=0;c<CHANNELS;++c)
++        sum=mad(input[base+(ulong)c*plane],weights[row+c],sum);
++#if BIAS
++    sum+=bias[bias_offset+oc];
++#endif
++    ulong pos=output_offset+(ulong)bc*plane+i;
++    if(scale!=0.0f)sum+=scale*output[pos];
++    output[pos]=sum;
++}
+diff --git a/src/kernels/copy_strided.cl b/src/kernels/copy_strided.cl
+index c370b6e..f351b11 100644
+--- a/src/kernels/copy_strided.cl
++++ b/src/kernels/copy_strided.cl
+@@ -6,52 +6,130 @@
+ ///
+ ///////////////////////////////////////////////////////////////////////////////
+ #include "defs.h"
++#ifndef INDEX32
++#define INDEX32 0
++#endif
++#if INDEX32
++typedef uint index_t;
++#else
++typedef ulong index_t;
++#endif
+ 
+ __kernel void copy(
+-                ulong d0,ulong s0,ulong t0,
++                index_t d0,index_t s0,index_t t0,
+ #if DIMS >= 2
+-                ulong d1,ulong s1,ulong t1,
++                index_t d1,index_t s1,index_t t1,
+ #endif
+ #if DIMS >= 3
+-                ulong d2,ulong s2,ulong t2,
++                index_t d2,index_t s2,index_t t2,
+ #endif          
+ #if DIMS >= 4
+-                ulong d3,ulong s3,ulong t3,
++                index_t d3,index_t s3,index_t t3,
+ #endif          
+ #if DIMS >= 5
+-                ulong d4,ulong s4,ulong t4,
++                index_t d4,index_t s4,index_t t4,
+ #endif
+ #if DIMS >= 6
+-                ulong d5,ulong s5,ulong t5,
++                index_t d5,index_t s5,index_t t5,
+ #endif
+ #if DIMS >= 7
+-                ulong d6,ulong s6,ulong t6,
++                index_t d6,index_t s6,index_t t6,
+ #endif
+ #if DIMS >= 8
+-                ulong d7,ulong s7,ulong t7,
++                index_t d7,index_t s7,index_t t7,
+ #endif
+-                __global dtype_src const *src,ulong src_offset,
+-                __global dtype_tgt *tgt,ulong tgt_offset)
++                __global dtype_src const *src,index_t src_offset,
++                __global dtype_tgt *tgt,index_t tgt_offset)
+ {
+         src+=src_offset;
+         tgt+=tgt_offset;
++        #if COPY_FLAT3 && DIMS == 3
++            index_t g=get_global_id(0);
++            if(g>=d0*d1*d2) return;
++            index_t i2=g % FLAT_D2;
++            index_t i1=(g / FLAT_D2) % FLAT_D1;
++            index_t i0=g / ((uint)FLAT_D2*(uint)FLAT_D1);
++            tgt[i0*t0+i1*t1+i2*t2]=src[i0*s0+i1*s1+i2*s2];
++        #elif COPY_NO_DIVISION && DIMS >= 4
++        #if DIMS == 4
++            index_t i3 = get_global_id(0);
++            index_t i2 = get_global_id(1);
++            index_t i1 = get_global_id(2);
++            if(i1 >= d1 || i2 >= d2 || i3 >= d3) return;
++            for(index_t i0=0;i0<d0;++i0) {
++                tgt[i0*t0 + i1*t1 + i2*t2 + i3*t3] = src[i0*s0 + i1*s1 + i2*s2 + i3*s3];
++            }
++        #elif DIMS == 5
++            index_t i4 = get_global_id(0);
++            index_t i3 = get_global_id(1);
++            index_t i2 = get_global_id(2);
++            if(i2 >= d2 || i3 >= d3 || i4 >= d4) return;
++            for(index_t i0=0;i0<d0;++i0) {
++                for(index_t i1=0;i1<d1;++i1) {
++                    tgt[i0*t0 + i1*t1 + i2*t2 + i3*t3 + i4*t4] = src[i0*s0 + i1*s1 + i2*s2 + i3*s3 + i4*s4];
++                }
++            }
++        #elif DIMS == 6
++            index_t i5 = get_global_id(0);
++            index_t i4 = get_global_id(1);
++            index_t i3 = get_global_id(2);
++            if(i3 >= d3 || i4 >= d4 || i5 >= d5) return;
++            for(index_t i0=0;i0<d0;++i0) {
++                for(index_t i1=0;i1<d1;++i1) {
++                    for(index_t i2=0;i2<d2;++i2) {
++                        tgt[i0*t0 + i1*t1 + i2*t2 + i3*t3 + i4*t4 + i5*t5] = src[i0*s0 + i1*s1 + i2*s2 + i3*s3 + i4*s4 + i5*s5];
++                    }
++                }
++            }
++        #elif DIMS == 7
++            index_t i6 = get_global_id(0);
++            index_t i5 = get_global_id(1);
++            index_t i4 = get_global_id(2);
++            if(i4 >= d4 || i5 >= d5 || i6 >= d6) return;
++            for(index_t i0=0;i0<d0;++i0) {
++                for(index_t i1=0;i1<d1;++i1) {
++                    for(index_t i2=0;i2<d2;++i2) {
++                        for(index_t i3=0;i3<d3;++i3) {
++                            tgt[i0*t0 + i1*t1 + i2*t2 + i3*t3 + i4*t4 + i5*t5 + i6*t6] = src[i0*s0 + i1*s1 + i2*s2 + i3*s3 + i4*s4 + i5*s5 + i6*s6];
++                        }
++                    }
++                }
++            }
++        #elif DIMS == 8
++            index_t i7 = get_global_id(0);
++            index_t i6 = get_global_id(1);
++            index_t i5 = get_global_id(2);
++            if(i5 >= d5 || i6 >= d6 || i7 >= d7) return;
++            for(index_t i0=0;i0<d0;++i0) {
++                for(index_t i1=0;i1<d1;++i1) {
++                    for(index_t i2=0;i2<d2;++i2) {
++                        for(index_t i3=0;i3<d3;++i3) {
++                            for(index_t i4=0;i4<d4;++i4) {
++                                tgt[i0*t0 + i1*t1 + i2*t2 + i3*t3 + i4*t4 + i5*t5 + i6*t6 + i7*t7] = src[i0*s0 + i1*s1 + i2*s2 + i3*s3 + i4*s4 + i5*s5 + i6*s6 + i7*s7];
++                            }
++                        }
++                    }
++                }
++            }
++        #endif
++        #else
+         #if DIMS == 1
+-            ulong i0 = get_global_id(0);
++            index_t i0 = get_global_id(0);
+             if(i0 >= d0)
+                 return;
+             tgt[i0*t0] = src[i0*s0];
+         #elif DIMS == 2
+-            ulong i1 = get_global_id(0);
+-            ulong i0 = get_global_id(1);
++            index_t i1 = get_global_id(0);
++            index_t i0 = get_global_id(1);
+             if(i0 >= d0)
+                 return;
+             if(i1 >= d1)
+                 return;
+             tgt[i0*t0 + i1*t1] = src[i0*s0 + i1*s1];
+         #elif DIMS == 3            
+-            ulong i2 = get_global_id(0);
+-            ulong i1 = get_global_id(1);
+-            ulong i0 = get_global_id(2);
++            index_t i2 = get_global_id(0);
++            index_t i1 = get_global_id(1);
++            index_t i0 = get_global_id(2);
+             if(i0 >= d0)
+                 return;
+             if(i1 >= d1)
+@@ -60,98 +138,99 @@ __kernel void copy(
+                 return;
+             tgt[i0*t0 + i1*t1 + i2*t2] = src[i0*s0 + i1*s1 + i2*s2];
+         #elif DIMS == 4
+-            ulong ic = get_global_id(0);
+-            ulong i1 = get_global_id(1);
+-            ulong i0 = get_global_id(2);
++            index_t ic = get_global_id(0);
++            index_t i1 = get_global_id(1);
++            index_t i0 = get_global_id(2);
+             if(i0 >= d0)
+                 return;
+             if(i1 >= d1)
+                 return;
+             if(ic >= d2*d3)
+                 return;
+-            ulong i2 = ic / d3;
+-            ulong i3 = ic % d3;
++            index_t i2 = ic / d3;
++            index_t i3 = ic % d3;
+             tgt[i0*t0 + i1*t1 + i2*t2 + i3*t3] = src[i0*s0 + i1*s1 + i2*s2 + i3*s3];
+         #elif DIMS == 5
+-            ulong i34 = get_global_id(0);
+-            ulong i12 = get_global_id(1);
+-            ulong i0 = get_global_id(2);
++            index_t i34 = get_global_id(0);
++            index_t i12 = get_global_id(1);
++            index_t i0 = get_global_id(2);
+             if(i0 >= d0)
+                 return;
+             if(i12 >= d1*d2)
+                 return;
+             if(i34 >= d3*d4)
+                 return;
+-            ulong i1  = i12 / d2;
+-            ulong i2  = i12 % d2;
+-            ulong i3  = i34 / d4;
+-            ulong i4  = i34 % d4;
++            index_t i1  = i12 / d2;
++            index_t i2  = i12 % d2;
++            index_t i3  = i34 / d4;
++            index_t i4  = i34 % d4;
+             tgt[i0*t0 + i1*t1 + i2*t2 + i3*t3 + i4*t4] = src[i0*s0 + i1*s1 + i2*s2 + i3*s3 + i4*s4];
+         #elif DIMS == 6
+-            ulong i45 = get_global_id(0);
+-            ulong i23 = get_global_id(1);
+-            ulong i01 = get_global_id(2);
++            index_t i45 = get_global_id(0);
++            index_t i23 = get_global_id(1);
++            index_t i01 = get_global_id(2);
+             if(i01 >= d0*d1)
+                 return;
+             if(i23 >= d2*d3)
+                 return;
+             if(i45 >= d4*d5)
+                 return;
+-            ulong i0  = i01 / d1;
+-            ulong i1  = i01 % d1;
+-            ulong i2  = i23 / d3;
+-            ulong i3  = i23 % d3;
+-            ulong i4  = i45 / d5;
+-            ulong i5  = i45 % d5;
++            index_t i0  = i01 / d1;
++            index_t i1  = i01 % d1;
++            index_t i2  = i23 / d3;
++            index_t i3  = i23 % d3;
++            index_t i4  = i45 / d5;
++            index_t i5  = i45 % d5;
+ 
+             tgt[i0*t0 + i1*t1 + i2*t2 + i3*t3 + i4*t4 + i5*t5] = src[i0*s0 + i1*s1 + i2*s2 + i3*s3 + i4*s4 + i5*s5];
+         #elif DIMS == 7
+-            ulong i456 = get_global_id(0);
+-            ulong i23  = get_global_id(1);
+-            ulong i01  = get_global_id(2);
++            index_t i456 = get_global_id(0);
++            index_t i23  = get_global_id(1);
++            index_t i01  = get_global_id(2);
+             if(i01 >= d0*d1)
+                 return;
+             if(i23 >= d2*d3)
+                 return;
+             if(i456 >= d4*d5*d6)
+                 return;
+-            ulong i0  = i01 / d1;
+-            ulong i1  = i01 % d1;
+-            ulong i2  = i23 / d3;
+-            ulong i3  = i23 % d3;
+-            ulong i4  = i456 / (d5*d6);
+-            ulong i56 = i456 % (d5*d6);
+-            ulong i5  = i56 / d6;
+-            ulong i6  = i56 % d6;
++            index_t i0  = i01 / d1;
++            index_t i1  = i01 % d1;
++            index_t i2  = i23 / d3;
++            index_t i3  = i23 % d3;
++            index_t i4  = i456 / (d5*d6);
++            index_t i56 = i456 % (d5*d6);
++            index_t i5  = i56 / d6;
++            index_t i6  = i56 % d6;
+ 
+             tgt[i0*t0 + i1*t1 + i2*t2 + i3*t3 + i4*t4 + i5*t5 + i6*t6] = src[i0*s0 + i1*s1 + i2*s2 + i3*s3 + i4*s4 + i5*s5 + i6*s6];
+         #elif DIMS == 8
+-            ulong i567 = get_global_id(0);
+-            ulong i234 = get_global_id(1);
+-            ulong i01  = get_global_id(2);
++            index_t i567 = get_global_id(0);
++            index_t i234 = get_global_id(1);
++            index_t i01  = get_global_id(2);
+             if(i01 >= d0*d1)
+                 return;
+             if(i234 >= d2*d3*d4)
+                 return;
+             if(i567 >= d5*d6*d7)
+                 return;
+-            ulong i0  = i01 / d1;
+-            ulong i1  = i01 % d1;
++            index_t i0  = i01 / d1;
++            index_t i1  = i01 % d1;
+ 
+-            ulong i2  = i234 / (d3*d4);
+-            ulong i34 = i234 % (d3*d4);
+-            ulong i3  = i34 / d4;
+-            ulong i4  = i34 % d4;
++            index_t i2  = i234 / (d3*d4);
++            index_t i34 = i234 % (d3*d4);
++            index_t i3  = i34 / d4;
++            index_t i4  = i34 % d4;
+ 
+-            ulong i5  = i567 / (d6*d7);
+-            ulong i67 = i567 % (d6*d7);
+-            ulong i6  = i67 / d7;
+-            ulong i7  = i67 % d7;
++            index_t i5  = i567 / (d6*d7);
++            index_t i67 = i567 % (d6*d7);
++            index_t i6  = i67 / d7;
++            index_t i7  = i67 % d7;
+ 
+             tgt[i0*t0 + i1*t1 + i2*t2 + i3*t3 + i4*t4 + i5*t5 + i6*t6 + i7*t7] = src[i0*s0 + i1*s1 + i2*s2 + i3*s3 + i4*s4 + i5*s5 + i6*s6 + i7*s7];
+         #else
+         #error "Unsupported dims"
+         #endif
++        #endif // COPY_NO_DIVISION
+ }
+ 
+ 
+diff --git a/src/kernels/defs.h b/src/kernels/defs.h
+index e69818a..da0f062 100644
+--- a/src/kernels/defs.h
++++ b/src/kernels/defs.h
+@@ -10,6 +10,7 @@
+ #define ACTIVATION_TANH     2
+ #define ACTIVATION_SIGMOID  3
+ #define ACTIVATION_RELU6    4
++#define ACTIVATION_SILU     5
+ 
+ #ifndef dtype
+ #define dtype float
+@@ -44,6 +45,9 @@
+ #   define ACTIVATION_F(x) (min(max((x),(dtype)(0)),(dtype)(6)))
+ #   define ACTIVATION_FINV(y,dy)  ((0<y && y<6)?dy:0)
+ #   define ACTIVATION_NAME relu6
++#elif ACTIVATION == ACTIVATION_SILU
++#   define ACTIVATION_F(x) ((x) / ((dtype)(1) + exp(-(x))))
++#   define ACTIVATION_NAME silu
+ #else
+ #   error "Unknown activation"
+ #endif 
+diff --git a/src/kernels/depthwise_separable_bw_filter.cl b/src/kernels/depthwise_separable_bw_filter.cl
+index e807d22..0283585 100644
+--- a/src/kernels/depthwise_separable_bw_filter.cl
++++ b/src/kernels/depthwise_separable_bw_filter.cl
+@@ -11,6 +11,33 @@
+ #ifndef SECOND_REDUCE_SIZE
+ #define SECOND_REDUCE_SIZE 1
+ #endif
++#ifndef SAFE_COORDINATES
++#define SAFE_COORDINATES 0
++#endif
++#ifndef IMAGE_ROWS
++#define IMAGE_ROWS 0
++#endif
++#ifndef IMAGE_COLS
++#define IMAGE_COLS 0
++#endif
++
++// Keep runtime image-coordinate division exact on legacy 32-bit OpenCL
++// compilers. Power-of-two maps use shifts; odd maps use unsigned div/mod.
++inline __attribute__((always_inline)) uint2 depthwise_divmod(uint n,uint d)
++{
++    if(d && (d & (d-1u))==0u) {
++        uint shift=0;
++        for(uint value=d;value>1u;value>>=1u)++shift;
++        return (uint2)(n>>shift,n&(d-1u));
++    }
++    uint q=0,r=0;
++    for(int bit=31;bit>=0;--bit) {
++        uint carry=r>>31;
++        r=(r<<1)|((n>>bit)&1u);
++        if(carry || r>=d) {r-=d;q|=1u<<bit;}
++    }
++    return (uint2)(q,r);
++}
+ 
+ __kernel
+ __attribute__((reqd_work_group_size(WG_SIZE,1,1)))
+@@ -43,15 +70,39 @@ void conv_bw_filter(
+ 
+     int items = batch * (width * height);
+     const int wg_size2 = WG_SIZE * SECOND_REDUCE_SIZE;
++#if COALESCED_FILTER
++    float sum=0;
++    const uint plane=IMAGE_ROWS*IMAGE_COLS;
++    for(uint index=get_global_id(0);index<(uint)items;index+=wg_size2) {
++        uint b=index/plane, rc=index%plane;
++        int r=rc/IMAGE_COLS,c=rc%IMAGE_COLS;
++        int sr=r-KERN/2+dr,sc=c-KERN/2+dc;
++        if(sr>=0 && sr<IMAGE_ROWS && sc>=0 && sc<IMAGE_COLS) {
++            uint base=b*(CHANNELS*plane);
++            sum+=input[base+sr*IMAGE_COLS+sc]*output[base+rc];
++        }
++    }
++#else
+     int items_per_wg = (items + wg_size2 - 1) / wg_size2;
+     int my_start = items_per_wg * get_global_id(0); // it is same as local id for 1stage reduce
+     int my_end   = min(my_start + items_per_wg,items);
+ 
+     float sum = 0;
+-    int b  = my_start / (width * height);
++#if SAFE_COORDINATES
++    // Host-specialized dimensions let power-of-two shifts fold at build time.
++    uint image_width=IMAGE_COLS ? IMAGE_COLS : (uint)width;
++    uint image_height=IMAGE_ROWS ? IMAGE_ROWS : (uint)height;
++    uint2 batch_position=depthwise_divmod((uint)my_start,image_width*image_height);
++    uint2 row_column=depthwise_divmod(batch_position.y,image_width);
++    int b = batch_position.x;
++    int r = row_column.x;
++    int c = row_column.y;
++#else
++    int b = my_start / (width * height);
+     int rc = my_start % (width * height);
+     int r = rc / width;
+     int c = rc % width;
++#endif
+ 
+     #pragma unroll(16)
+     for(int index = my_start;index <my_end;index ++) {
+@@ -73,6 +124,7 @@ void conv_bw_filter(
+         }
+     }
+ 
++#endif
+     REDUCE_PREPARE(WG_SIZE,float);
+ 
+     my_work_group_reduce_add(sum);
+diff --git a/src/kernels/depthwise_separable_conv.cl b/src/kernels/depthwise_separable_conv.cl
+index 73a1f93..58028b1 100644
+--- a/src/kernels/depthwise_separable_conv.cl
++++ b/src/kernels/depthwise_separable_conv.cl
+@@ -6,10 +6,25 @@
+ ///
+ ///////////////////////////////////////////////////////////////////////////////
+ #include "defs.h"
++#ifndef BUILD_BACKWARD_DATA
++#define BUILD_BACKWARD_DATA 1
++#endif
++#if BUILD_BACKWARD_DATA
+ #include "atomic.h"
+-
++#endif
++
++#ifndef DW_WIDTH_FIRST
++#define DW_WIDTH_FIRST 0
++#endif
++// This permutation is only selected by the forward-only program. Backward
++// keeps its existing launch and atomic accumulation mapping.
++#if DW_WIDTH_FIRST && !BUILD_BACKWARD_DATA
++#define DIM_R 1
++#define DIM_C 0
++#else
+ #define DIM_R 0
+ #define DIM_C 1
++#endif
+ #define DIM_BD 2
+ 
+ #define KERN_PAD ((KERN-1)/2)
+@@ -50,7 +65,11 @@ void conv(int batch,int height,int width,
+     for(int dr=0;dr < KERN;dr++)
+         #pragma unroll
+         for(int dc=0;dc<KERN;dc++)
++#if DW_REVERSE_KERNEL
++            K_vals[dr][dc] = kern[(KERN-1-dr)*KERN+(KERN-1-dc)];
++#else
+             K_vals[dr][dc] = *kern ++;
++#endif
+ 
+     #if BIAS != 0
+         float start_val = bias[bias_offset + d];
+@@ -104,6 +123,7 @@ void conv(int batch,int height,int width,
+ 
+ }
+ 
++#if BUILD_BACKWARD_DATA
+ __kernel
+ void backward_data_conv(int batch,int height,int width,
+           __global float *input,ulong input_offset,
+@@ -179,3 +199,5 @@ void backward_data_conv(int batch,int height,int width,
+         }
+     }
+ }
++
++#endif // BUILD_BACKWARD_DATA
+diff --git a/src/kernels/depthwise_stride2.cl b/src/kernels/depthwise_stride2.cl
+new file mode 100644
+index 0000000..9d177be
+--- /dev/null
++++ b/src/kernels/depthwise_stride2.cl
+@@ -0,0 +1,54 @@
++#include "defs.h"
++// One output per lane: nine taps, no padded GEMM channel dimension.
++__kernel void depthwise_stride2(
++    __global const float *x,ulong xo,__global const float *w,ulong wo,
++#if BIAS
++    __global const float *bias,ulong bo,
++#endif
++    __global float *out,ulong oo,float factor)
++{
++    uint p=get_global_id(0)*PIXELS,bc=get_global_id(1);
++    if(p>=DST_H*DST_W)return;
++    uint c=bc%CHANNELS;int y=(int)(p/DST_W)*2-1,x0=(int)(p%DST_W)*2-1;
++    ulong src=xo+(ulong)bc*SRC_H*SRC_W;
++#if PIXELS == 4
++    float4 sum=(float4)(0.0f);
++    #pragma unroll
++    for(int ky=0;ky<3;++ky) {
++        int iy=y+ky;float values[9];
++        #pragma unroll
++        for(int j=0;j<9;++j){int ix=x0+j;values[j]=0.0f;
++            if((uint)iy<SRC_H && (uint)ix<SRC_W)values[j]=x[src+(ulong)iy*SRC_W+ix];}
++        #pragma unroll
++        for(int kx=0;kx<3;++kx){
++            float4 v=(float4)(values[kx],values[kx+2],values[kx+4],values[kx+6]);
++            sum=mad(v,(float4)(w[wo+(ulong)c*9+ky*3+kx]),sum);
++        }
++    }
++#else
++    float sum=0.0f;
++    #pragma unroll
++    for(int ky=0;ky<3;++ky) {
++        int iy=y+ky;
++        #pragma unroll
++        for(int kx=0;kx<3;++kx) {
++            int ix=x0+kx;float value=0.0f;
++            if((uint)iy<SRC_H && (uint)ix<SRC_W)value=x[src+(ulong)iy*SRC_W+ix];
++            sum=mad(value,w[wo+(ulong)c*9+ky*3+kx],sum);
++        }
++    }
++#endif
++#if BIAS
++    sum+=bias[bo+c];
++#endif
++    ulong dst=oo+(ulong)bc*DST_H*DST_W+p;
++#if PIXELS == 4
++    float4 value=ACTIVATION_F(sum);
++    if(factor!=0.0f)value+=factor*vload4(0,out+dst);
++    vstore4(value,0,out+dst);
++#else
++    float value=ACTIVATION_F(sum);
++    if(factor!=0.0f)value+=factor*out[dst];
++    out[dst]=value;
++#endif
++}
+diff --git a/src/kernels/filter_split_reduce.cl b/src/kernels/filter_split_reduce.cl
+new file mode 100644
+index 0000000..1cb529c
+--- /dev/null
++++ b/src/kernels/filter_split_reduce.cl
+@@ -0,0 +1,13 @@
++// Fixed-order, destination-owned reduction of disjoint filter partials.
++__kernel void filter_split_reduce(uint count,
++                                 __global const float *partial,uint po,
++                                 __global float *dw,uint wo,float factor)
++{
++    uint i=get_global_id(0);
++    if(i>=count)return;
++    float sum=0;
++    for(uint part=0;part<FILTER_PARTITIONS;++part)
++        sum+=partial[po+part*count+i];
++    if(factor==0)dw[wo+i]=sum;
++    else dw[wo+i]=factor*dw[wo+i]+sum;
++}
+diff --git a/src/kernels/interpolate_2d.cl b/src/kernels/interpolate_2d.cl
+index 974aeb2..a61513a 100644
+--- a/src/kernels/interpolate_2d.cl
++++ b/src/kernels/interpolate_2d.cl
+@@ -6,7 +6,12 @@
+ ///
+ ///////////////////////////////////////////////////////////////////////////////
+ #include "defs.h"
++#ifndef BILINEAR_BACKWARD
++#define BILINEAR_BACKWARD 1
++#endif
++#if BILINEAR_BACKWARD
+ #include "atomic.h"
++#endif
+ 
+ int get_src_pos(int pos,float scale,int limit,float offset)
+ {
+@@ -158,6 +163,7 @@ void bilinear(
+                 w_r1 * (w_c0 * *x10 + w_c1 * *x11);
+             *y = val;
+         }
++#if BILINEAR_BACKWARD
+         else {
+             dtype val = *y;
+             atomic_addf(x00,w_r0 * w_c0 * val);
+@@ -165,6 +171,7 @@ void bilinear(
+             atomic_addf(x10,w_r1 * w_c0 * val);
+             atomic_addf(x11,w_r1 * w_c1 * val);
+         }
++#endif
+ 
+         x00 += step_src;
+         x01 += step_src;
+diff --git a/src/kernels/pack_byte_output.cl b/src/kernels/pack_byte_output.cl
+new file mode 100644
+index 0000000..e1431be
+--- /dev/null
++++ b/src/kernels/pack_byte_output.cl
+@@ -0,0 +1,19 @@
++// One work item owns one complete32-bit destination word; no subword stores.
++__kernel void pack_byte_output(__global const int *src,uint src_offset,
++                               __global uint *dst,uint dst_offset,uint count)
++{
++    uint word=get_global_id(0);
++    uint words=(count>>2)+((count&3u)!=0u);
++    if(word>=words)return;
++    uint packed=0;
++    for(uint lane=0;lane<4;lane++) {
++        uint i=word*4+lane;
++        uint value=i<count?((uint)src[src_offset+i]&255u):0u;
++#if LITTLE_ENDIAN_BYTES
++        packed|=value<<(lane*8);
++#else
++        packed|=value<<((3-lane)*8);
++#endif
++    }
++    dst[dst_offset+word]=packed;
++}
+diff --git a/src/kernels/pooling.cl b/src/kernels/pooling.cl
+index 41e0d68..cb7f2e2 100644
+--- a/src/kernels/pooling.cl
++++ b/src/kernels/pooling.cl
+@@ -6,7 +6,12 @@
+ ///
+ ///////////////////////////////////////////////////////////////////////////////
+ #include "defs.h"
++#ifndef POOL_GATHER
++#define POOL_GATHER 0
++#endif
++#if !POOL_GATHER
+ #include "atomic.h"
++#endif
+ 
+ #ifndef itype
+ #define itype int
+@@ -150,6 +155,7 @@ void pooling(int BC,int inp_H,int inp_W,int out_H,int out_W,
+     #endif
+ }
+ 
++#if !POOL_GATHER
+ void save_dx(__global dtype *ptr,dtype value)
+ {
+     #if POOL_W <= STRIDE_W && POOL_H <= STRIDE_H
+@@ -160,7 +166,45 @@ void save_dx(__global dtype *ptr,dtype value)
+ 
+ }
+ 
+-#if INDEX_MAX_SRC == 1
++#endif
++
++#if POOL_GATHER && POOL_MODE == 0 && INDEX_MAX_SRC == 0
++// Each work item owns one input-gradient element. Recompute winners only
++// for output windows containing that element; overlapping windows need no CAS.
++__kernel
++__attribute__((reqd_work_group_size(WG_SIZE,WG_SIZE,1)))
++void pooling_bw(int BC,int inp_H,int inp_W,int out_H,int out_W,
++               __global const dtype *src,ulong src_offset,
++               __global const dtype *tgt,ulong tgt_offset,
++               __global dtype *dx,ulong dx_offset)
++{
++    int r=get_global_id(0), c=get_global_id(1), bc=get_global_id(2);
++    if(bc>=BC || r>=inp_H || c>=inp_W) return;
++    src += src_offset + bc*inp_H*inp_W;
++    tgt += tgt_offset + bc*out_H*out_W;
++    dx += dx_offset + bc*inp_H*inp_W;
++    int pos=r*inp_W+c;
++    int rlo=(max(0,r+PAD_H-POOL_H+1)+STRIDE_H-1)/STRIDE_H;
++    int clo=(max(0,c+PAD_W-POOL_W+1)+STRIDE_W-1)/STRIDE_W;
++    int rhi=min(out_H-1,(r+PAD_H)/STRIDE_H);
++    int chi=min(out_W-1,(c+PAD_W)/STRIDE_W);
++    dtype sum=0;
++    for(int y=rlo;y<=rhi;++y) for(int x=clo;x<=chi;++x) {
++        int y0=max(0,y*STRIDE_H-PAD_H), x0=max(0,x*STRIDE_W-PAD_W);
++        int y1=min(inp_H,y*STRIDE_H-PAD_H+POOL_H);
++        int x1=min(inp_W,x*STRIDE_W-PAD_W+POOL_W);
++        dtype best=-INFINITY;
++        int winner=-1;
++        for(int iy=y0;iy<y1;++iy) for(int ix=x0;ix<x1;++ix) {
++            int index=iy*inp_W+ix;
++            dtype v=src[index];
++            if(winner<0 || v>best || isnan(v)) {best=v;winner=index;}
++        }
++        if(winner==pos) sum+=tgt[y*out_W+x];
++    }
++    dx[pos]+=sum;
++}
++#elif INDEX_MAX_SRC == 1
+ __kernel
+ __attribute__((reqd_work_group_size(WG_SIZE,WG_SIZE,1)))
+ void pooling_bw(int BC,int inp_H,int inp_W,int out_H,int out_W,
+diff --git a/src/kernels/sgemm.cl b/src/kernels/sgemm.cl
+index 5a175b4..8d1627c 100644
+--- a/src/kernels/sgemm.cl
++++ b/src/kernels/sgemm.cl
+@@ -61,7 +61,34 @@
+ #define CONVGEMM 0
+ #endif
+ 
+-#if CONVGEMM == 3 || REDUCE_K > 1
++#ifndef FILTER_SPLIT_OUTPUT
++#define FILTER_SPLIT_OUTPUT 0
++#endif
++
++#ifndef GEMM_COALESCED_B
++#define GEMM_COALESCED_B 0
++#endif
++#ifndef GEMM_SKIP_FINAL_BARRIER
++#define GEMM_SKIP_FINAL_BARRIER 0
++#endif
++#ifndef GEMM_STATIC_M
++#define GEMM_STATIC_M 0
++#endif
++#ifndef GEMM_STATIC_K
++#define GEMM_STATIC_K 0
++#endif
++#ifndef GEMM_VECTOR_STORES
++#define GEMM_VECTOR_STORES 0
++#endif
++#ifndef GEMM_VECTOR_STORES2
++#define GEMM_VECTOR_STORES2 0
++#endif
++
++#if FILTER_SPLIT_OUTPUT && CONVGEMM != 2
++#error "Partial filter output requires convolution backward filter"
++#endif
++
++#if CONVGEMM == 3 || (REDUCE_K > 1 && !FILTER_SPLIT_OUTPUT)
+ #include "atomic.h"
+ #if ACTIVATION != ACTIVATION_IDENTITY
+ # error "Can't use activation with atomic ops"
+@@ -182,7 +209,7 @@
+ #define lB(x,y) b_tile[(x)][(y) / BLOCK_SIZE_N][(y) % BLOCK_SIZE_N]
+ 
+ 
+-#if TILE_SIZE_M != TILE_SIZE_N
++#if TILE_SIZE_M != TILE_SIZE_N && CONVGEMM != 1
+ #error "Unsupported condif"
+ #endif
+ 
+@@ -262,6 +289,16 @@
+ #define REDUCE_K 1
+ #endif
+ 
++// These optional paths only affect ordinary forward pointwise convolution.
++// Spatial padding and backward modes retain their existing signed addressing.
++#if CONVGEMM == 1 && GROUPS == 1 && REDUCE_K == 1 && BATCH_GEMM == 0 && \
++    KERN_H == 1 && KERN_W == 1 && STRIDE_H == 1 && STRIDE_W == 1 && \
++    PAD_H == 0 && PAD_W == 0 && DILATE_H == 1 && DILATE_W == 1
++#define GEMM_POINTWISE_FORWARD 1
++#else
++#define GEMM_POINTWISE_FORWARD 0
++#endif
++
+ #if GROUPS == 1 && REDUCE_K == 1 && BATCH_GEMM == 0
+ #define DIM_M 0
+ #define DIM_N 1
+@@ -332,9 +369,19 @@ void    sgemm(
+ #endif
+         )
+ {
++#if GEMM_POINTWISE_FORWARD && GEMM_STATIC_M > 0
++    M = GEMM_STATIC_M;
++#endif
++#if GEMM_POINTWISE_FORWARD && GEMM_STATIC_K > 0
++    K = GEMM_STATIC_K;
++#endif
+     A += offset_A;
+     B += offset_B;
+     C += offset_C;
++#if FILTER_SPLIT_OUTPUT
++    // Each partition owns a disjoint complete filter matrix; no float atomics.
++    C += (get_global_id(DIM_G) % REDUCE_K) * (M * N * GROUPS);
++#endif
+ #if BATCH_GEMM == 1 
+     int batch_id = get_global_id(DIM_G);
+     if(batch_id >= batches)
+@@ -409,6 +456,15 @@ void    sgemm(
+     
+     int local_tile_id = lid0 * get_local_size(DIM_N) + lid1;
+ 
++#if GEMM_POINTWISE_FORWARD && GEMM_COALESCED_B
++    // OpenCL's M local dimension is contiguous in the hardware lane order.
++    // Leave A's loading permutation unchanged; only B gets spatially adjacent
++    // loads. Both permutations still fill the same complete LDS tiles.
++    int b_local_tile_id = lid0 + BLOCKS_IN_TILE_M * lid1;
++#else
++    int b_local_tile_id = local_tile_id;
++#endif
++
+     #define local_wg_size (BLOCKS_IN_TILE_M * BLOCKS_IN_TILE_N)
+     #define load_step (TILE_SIZE_M * TILE_SIZE_K / local_wg_size)
+ 
+@@ -442,7 +498,9 @@ void    sgemm(
+     int k=0;
+ #endif
+ 
+-#if TILE_SIZE_N == TILE_SIZE_M && TILE_SIZE_K % load_step  == 0 && load_step <= TILE_SIZE_K
++#if TILE_SIZE_N != TILE_SIZE_M
++#define LOAD_VARIANT 2
++#elif TILE_SIZE_K % load_step  == 0 && load_step <= TILE_SIZE_K
+ #define LOAD_VARIANT 0
+ #else
+ #define LOAD_VARIANT 1
+@@ -473,12 +531,31 @@ void    sgemm(
+     for(;k<K;k+=TILE_SIZE_K) {
+ 
+ 
+-        #if LOAD_VARIANT == 0
++        #if LOAD_VARIANT == 2
++        {
++            // Rectangular output tiles need independent A/B load counts.
++            #pragma unroll
++            for(int p=local_tile_id;p<TILE_SIZE_M*TILE_SIZE_K;p+=WG_SIZE) {
++                int dk=p/TILE_SIZE_M,dm=p%TILE_SIZE_M;
++                int ar=tile_row0+dm,ak=k+dk;
++                lA(dk,dm)=(ar<M && ak<K) ? get_A(ar,ak) : 0.0f;
++            }
++            #pragma unroll
++            for(int p=b_local_tile_id;p<TILE_SIZE_N*TILE_SIZE_K;p+=WG_SIZE) {
++                int dk=p/TILE_SIZE_N,dn=p%TILE_SIZE_N;
++                int bk=k+dk,bc=tile_col0+dn;
++                lB(dk,dn)=(bk<K && bc<N) ? get_B(bk,bc) : 0.0f;
++            }
++            barrier(CLK_LOCAL_MEM_FENCE);
++        }
++        #elif LOAD_VARIANT == 0
+         {
+             int tile_kdir0 = local_tile_id / TILE_SIZE_M;
+             int tile_tdir  = local_tile_id % TILE_SIZE_M;
++            int b_tile_kdir0 = b_local_tile_id / TILE_SIZE_N;
++            int b_tile_tdir = b_local_tile_id % TILE_SIZE_N;
+             int a_row = tile_tdir + tile_row0;
+-            int b_col = tile_tdir + tile_col0;
++            int b_col = b_tile_tdir + tile_col0;
+ 
+             if(a_row >= M) {
+                 #pragma unroll
+@@ -504,23 +581,23 @@ void    sgemm(
+             }
+             if(b_col >= N) {
+                 #pragma unroll
+-                for(int i=0,tile_kdir=tile_kdir0;i<load_step;i++,tile_kdir+=WG_SIZE / TILE_SIZE_M) {
+-                    lB(tile_kdir,tile_tdir) = 0.0f;
++                for(int i=0,tile_kdir=b_tile_kdir0;i<load_step;i++,tile_kdir+=WG_SIZE / TILE_SIZE_M) {
++                    lB(tile_kdir,b_tile_tdir) = 0.0f;
+                 }
+             }
+             else {
+-                if(tile_kdir0 + k <= K - load_step * (WG_SIZE / TILE_SIZE_N)) {
++                if(b_tile_kdir0 + k <= K - load_step * (WG_SIZE / TILE_SIZE_N)) {
+                     #pragma unroll
+-                    for(int i=0,tile_kdir=tile_kdir0;i<load_step;i++,tile_kdir+=WG_SIZE / TILE_SIZE_N) {
++                    for(int i=0,tile_kdir=b_tile_kdir0;i<load_step;i++,tile_kdir+=WG_SIZE / TILE_SIZE_N) {
+                         int k_rc  = tile_kdir + k;
+-                        lB(tile_kdir,tile_tdir) = get_B(k_rc,b_col);
++                        lB(tile_kdir,b_tile_tdir) = get_B(k_rc,b_col);
+                     }
+                 }
+                 else {
+                     #pragma unroll
+-                    for(int i=0,tile_kdir=tile_kdir0;i<load_step;i++,tile_kdir+=WG_SIZE / TILE_SIZE_N) {
++                    for(int i=0,tile_kdir=b_tile_kdir0;i<load_step;i++,tile_kdir+=WG_SIZE / TILE_SIZE_N) {
+                         int k_rc  = tile_kdir + k;
+-                        lB(tile_kdir,tile_tdir) = k_rc < K ? get_B(k_rc,b_col) : 0.0f;
++                        lB(tile_kdir,b_tile_tdir) = k_rc < K ? get_B(k_rc,b_col) : 0.0f;
+                     }
+                 }
+             }
+@@ -586,7 +663,14 @@ void    sgemm(
+             }
+         }
+ 
++#if GEMM_POINTWISE_FORWARD && GEMM_SKIP_FINAL_BARRIER
++        // Uniform across the workgroup: only another K tile reuses this LDS.
++        // Loads-to-compute barriers above remain unconditional.
++        if(k + TILE_SIZE_K < K)
++            barrier(CLK_LOCAL_MEM_FENCE);
++#else
+         barrier(CLK_LOCAL_MEM_FENCE);
++#endif
+     }
+ #else // INTEL_PLATFORM == 1
+     // for intel we don't use local memory
+@@ -693,26 +777,69 @@ void    sgemm(
+ 
+ #if CONVGEMM == 1
+     {
+-        #pragma unroll
+-        for(int dc=0;dc<BLOCK_SIZE_N;dc++) {
+-            if(col + dc >= N)
+-                continue;
+-            int matrix_col = col + dc;
+-            int batch = matrix_col / IM2COL_OCHAN;
+-            int incol = matrix_col % IM2COL_OCHAN;
++#if GEMM_POINTWISE_FORWARD && GEMM_VECTOR_STORES && BLOCK_SIZE_N == 4
++        // A vector must cover four valid spatial positions in one image.
++        // The generic scalar loop below handles every boundary/tail case.
++        if(col + 3 < N && col / IM2COL_OCHAN == (col + 3) / IM2COL_OCHAN) {
++            int batch = col / IM2COL_OCHAN;
++            int incol = col % IM2COL_OCHAN;
+             int offset = batch * (IM2COL_OCHAN * GROUPS) * M + incol;
+             #pragma unroll
+             for(int dr=0;dr<BLOCK_SIZE_M;dr++) {
+-                if(row+dr < M) {
+-                    int index =(row + dr)*ldc + offset;
+-                    #if REDUCE_K > 1
+-                    atomic_addf(C+index,c[dr][dc]);
+-                    #else
++                if(row + dr < M) {
++                    int index = (row + dr) * ldc + offset;
++                    float4 value = (float4)(c[dr][0], c[dr][1], c[dr][2], c[dr][3]);
++                    value = ACTIVATION_F(value);
+                     if(beta_factor != 0)
+-                        C[index] = mad(C[index], beta_factor,ACTIVATION_F(c[dr][dc]));
+-                    else
+-                        C[index] = ACTIVATION_F(c[dr][dc]);
+-                    #endif
++                        value = mad(vload4(0,C+index),(float4)(beta_factor),value);
++                    vstore4(value,0,C+index);
++                }
++            }
++        }
++        else
++#elif GEMM_POINTWISE_FORWARD && GEMM_VECTOR_STORES2 && BLOCK_SIZE_N == 2
++        // Two-wide counterpart for the narrow-output tiles. Keep the scalar
++        // path when the pair would cross an image boundary or the last column.
++        if(col + 1 < N && col / IM2COL_OCHAN == (col + 1) / IM2COL_OCHAN) {
++            int batch = col / IM2COL_OCHAN;
++            int incol = col % IM2COL_OCHAN;
++            int offset = batch * (IM2COL_OCHAN * GROUPS) * M + incol;
++            #pragma unroll
++            for(int dr=0;dr<BLOCK_SIZE_M;dr++) {
++                if(row + dr < M) {
++                    int index = (row + dr) * ldc + offset;
++                    float2 value = (float2)(c[dr][0],c[dr][1]);
++                    value = ACTIVATION_F(value);
++                    if(beta_factor != 0)
++                        value = mad(vload2(0,C+index),(float2)(beta_factor),value);
++                    vstore2(value,0,C+index);
++                }
++            }
++        }
++        else
++#endif
++        {
++            #pragma unroll
++            for(int dc=0;dc<BLOCK_SIZE_N;dc++) {
++                if(col + dc >= N)
++                    continue;
++                int matrix_col = col + dc;
++                int batch = matrix_col / IM2COL_OCHAN;
++                int incol = matrix_col % IM2COL_OCHAN;
++                int offset = batch * (IM2COL_OCHAN * GROUPS) * M + incol;
++                #pragma unroll
++                for(int dr=0;dr<BLOCK_SIZE_M;dr++) {
++                    if(row+dr < M) {
++                        int index =(row + dr)*ldc + offset;
++                        #if REDUCE_K > 1
++                        atomic_addf(C+index,c[dr][dc]);
++                        #else
++                        if(beta_factor != 0)
++                            C[index] = mad(C[index], beta_factor,ACTIVATION_F(c[dr][dc]));
++                        else
++                            C[index] = ACTIVATION_F(c[dr][dc]);
++                        #endif
++                    }
+                 }
+             }
+         }
+@@ -728,7 +855,7 @@ void    sgemm(
+                         add_img_value(C,row+dr,col+dc,c[dr][dc]);
+                     #else
+                         int index = (row+dr)*ldc+col+dc;
+-                        #if REDUCE_K > 1
++                        #if REDUCE_K > 1 && !FILTER_SPLIT_OUTPUT
+                         atomic_addf(C+index,ACTIVATION_F(c[dr][dc]));
+                         #else
+                         if(beta_factor != 0)
+diff --git a/src/kernels/softmax.cl b/src/kernels/softmax.cl
+index bceaaec..eaaa2ec 100644
+--- a/src/kernels/softmax.cl
++++ b/src/kernels/softmax.cl
+@@ -204,3 +204,74 @@ void softmax_backward(int batch,int channels,int extra_batch,
+     }
+ }
+ 
++
++#if defined(SOFTMAX_2040)
++__kernel
++__attribute__((reqd_work_group_size(1,WG_SIZE,1)))
++void softmax_2040(__global const float *input, ulong input_offset,
++                  __global float *output, ulong output_offset)
++{
++    const ulong row = get_global_id(0) * (ulong)2040;
++    const int lane = get_local_id(1);
++    const int vectors = 2040 / 4;
++    input += input_offset + row;
++    output += output_offset + row;
++    float4 values[(2040 / 4 + WG_SIZE - 1) / WG_SIZE];
++    float peak = -DTYPE_MAX;
++    int item = 0;
++    for(int column = lane; column < vectors; column += WG_SIZE, ++item) {
++        float4 value = vload4(column, input);
++        values[item] = value;
++        peak = max(peak, max(max(value.x, value.y), max(value.z, value.w)));
++    }
++    REDUCE_PREPARE(WG_SIZE,float);
++    my_work_group_reduce_max(peak);
++    barrier(CLK_LOCAL_MEM_FENCE);
++
++    float total = 0.0f;
++    item = 0;
++    for(int column = lane; column < vectors; column += WG_SIZE, ++item) {
++        float4 value = exp(values[item] - peak);
++        values[item] = value;
++        total += (value.x + value.y) + (value.z + value.w);
++    }
++    my_work_group_reduce_add(total);
++
++    float scale = 1.0f / total;
++    item = 0;
++    for(int column = lane; column < vectors; column += WG_SIZE, ++item)
++        vstore4(values[item] * scale, column, output);
++}
++
++__kernel
++__attribute__((reqd_work_group_size(1,WG_SIZE,1)))
++void softmax_backward_2040(__global float *dx, ulong dx_offset,
++                           __global const float *y, ulong y_offset,
++                           __global const float *dy, ulong dy_offset)
++{
++    const ulong row = get_global_id(0) * (ulong)2040;
++    const int lane = get_local_id(1);
++    const int vectors = 2040 / 4;
++    dx += dx_offset + row;
++    y += y_offset + row;
++    dy += dy_offset + row;
++
++    float4 probabilities[(2040 / 4 + WG_SIZE - 1) / WG_SIZE];
++    float4 upstream[(2040 / 4 + WG_SIZE - 1) / WG_SIZE];
++    float sum = 0.0f;
++    int item = 0;
++    for(int col = lane; col < vectors; col += WG_SIZE, ++item) {
++        float4 p = vload4(col,y);
++        float4 g = vload4(col,dy);
++        probabilities[item] = p;
++        upstream[item] = g;
++        sum += dot(p,g);
++    }
++    REDUCE_PREPARE(WG_SIZE,float);
++    my_work_group_reduce_add(sum);
++
++    item = 0;
++    for(int col = lane; col < vectors; col += WG_SIZE, ++item)
++        vstore4(probabilities[item] * (upstream[item] - sum),col,dx);
++}
++#endif
+diff --git a/src/kernels/winograd_bwd_filter.cl b/src/kernels/winograd_bwd_filter.cl
+index 095039b..43794fa 100644
+--- a/src/kernels/winograd_bwd_filter.cl
++++ b/src/kernels/winograd_bwd_filter.cl
+@@ -7,6 +7,12 @@
+ ///////////////////////////////////////////////////////////////////////////////
+ #include "defs.h"
+ #include "atomic.h"
++#ifndef FILTER_COMPACT
++#define FILTER_COMPACT 0
++#endif
++#ifndef FILTER_PARTIALS
++#define FILTER_PARTIALS 0
++#endif
+ 
+ /***
+  * Implementation concept is based on the
+@@ -200,9 +206,15 @@ inline void store_local(__local float *l_val,int strd,float16 v)
+ }
+ 
+ #define WG_SIZE 256
++#if FILTER_COMPACT
++#define XTILES_IN_WG 16
++#define YTILES_IN_WG 16
++#define WG_K 16
++#else
+ #define XTILES_IN_WG 32
+ #define YTILES_IN_WG 32
+ #define WG_K 8
++#endif
+ 
+ #if  WG_K * XTILES_IN_WG  != WG_SIZE || YTILES_IN_WG * WG_K != WG_SIZE
+ #error "Parameters do not match"
+@@ -213,8 +225,13 @@ inline void store_local(__local float *l_val,int strd,float16 v)
+ #define PAD_H 1
+ #define PAD_W 1
+ 
++#if FILTER_COMPACT
++#define PATCH_Y 4
++#define PATCH_X 4
++#else
+ #define PATCH_Y 8
+ #define PATCH_X 8
++#endif
+ 
+ #if XTILES_IN_WG * YTILES_IN_WG * 16 != PATCH_Y * PATCH_X * WG_SIZE
+ #error
+@@ -242,6 +259,10 @@ void winconv_3x3_bwd_filter(int B, int N,int C,
+ {
+     image += image_offset;
+     kernels += kernels_offset;
++#if FILTER_PARTIALS
++    // Each reduction partition owns a complete, disjoint filter matrix.
++    kernels += get_global_id(2) * (N * C * 9);
++#endif
+     result += result_offset;
+ 
+     #define half_W  ((IMG_W+1)/2)
+@@ -346,6 +367,33 @@ void winconv_3x3_bwd_filter(int B, int N,int C,
+         barrier(CLK_LOCAL_MEM_FENCE);
+     }
+ 
++#if FILTER_COMPACT
++    // Reuse transform LDS for a complete output-coordinate transpose.
++    #define s_full(y,x,coord) wg_local_memory[((y)*XTILES_IN_WG+(x))*16+(coord)]
++    #pragma unroll
++    for(int dr=0;dr<PATCH_Y;dr++)
++        #pragma unroll
++        for(int dc=0;dc<PATCH_X;dc++)
++            s_full(dr+my_gemm_tile_kr,dc+my_gemm_tile_tl,my_gemm_tile_b)=p_C[dr][dc];
++    barrier(CLK_LOCAL_MEM_FENCE);
++    int index=get_local_id(WG_DIM);
++    int cn=wg_ch_out+index/XTILES_IN_WG,cc=wg_ch_in+index%XTILES_IN_WG;
++    float16 transformed=vload16(0,&s_full(index/XTILES_IN_WG,index%XTILES_IN_WG,0));
++    if(cn<N && cc<C) {
++        float vals[9];transform_kernel_bwd(transformed,vals);
++        __global float *ptr=kernels+9*(cc+cn*C);
++        #pragma unroll
++        for(int i=0;i<9;i++) {
++#if FILTER_PARTIALS
++            ptr[i]=vals[i];
++#else
++            if(reduce_k)atomic_addf(ptr+i,vals[i]);
++            else if(beta==0)ptr[i]=vals[i];
++            else ptr[i]=ptr[i]*beta+vals[i];
++#endif
++        }
++    }
++#else
+     int tile0 = get_local_id(WG_DIM) * 4;
+     int s_col_t0 = tile0 % XTILES_IN_WG;
+     int s_row_t = tile0 / XTILES_IN_WG;
+@@ -381,6 +429,10 @@ void winconv_3x3_bwd_filter(int B, int N,int C,
+             float s_kern9[9];
+             transform_kernel_bwd(s_kern16,s_kern9);
+             __global float *ptr = kernels + 9* (kern_ch_in +  kern_ch_out * C);
++#if FILTER_PARTIALS
++            #pragma unroll
++            for(int i=0;i<9;i++)ptr[i]=s_kern9[i];
++#else
+             if(reduce_k) {
+                 #pragma unroll
+                 for(int i=0;i<9;i++) {
+@@ -396,10 +448,12 @@ void winconv_3x3_bwd_filter(int B, int N,int C,
+                         ptr[i] = ptr[i] * beta + s_kern9[i];
+                 }
+             }
++#endif
+         }
+         
+         barrier(CLK_LOCAL_MEM_FENCE);
+     }
++#endif
+ 
+ }
+ 
+diff --git a/src/kernels/winograd_fwd.cl b/src/kernels/winograd_fwd.cl
+index df8e2de..01a8bbf 100644
+--- a/src/kernels/winograd_fwd.cl
++++ b/src/kernels/winograd_fwd.cl
+@@ -197,11 +197,21 @@ inline void store_local(__local float *l_val,int strd,float16 v)
+ }
+ 
+ #define WG_SIZE 256
++#if COMPACT
++#define TILES_IN_WG 16
++#define KERNELS_IN_WG 16
++#if COMPACT == 2
++#define WG_K 8
++#else
++#define WG_K 16
++#endif
++#else
+ #define TILES_IN_WG 32
+ #define KERNELS_IN_WG 32
+ #define WG_K 8
++#endif
+ 
+-#if  WG_K * TILES_IN_WG  != WG_SIZE || KERNELS_IN_WG * WG_K != WG_SIZE
++#if !COMPACT && (WG_K * TILES_IN_WG != WG_SIZE || KERNELS_IN_WG * WG_K != WG_SIZE)
+ #error "Parameters do not match"
+ #endif
+ 
+@@ -210,8 +220,13 @@ inline void store_local(__local float *l_val,int strd,float16 v)
+ #define PAD_H 1
+ #define PAD_W 1
+ 
++#if COMPACT
++#define PATCH_K 4
++#define PATCH_T 4
++#else
+ #define PATCH_K 8
+ #define PATCH_T 8
++#endif
+ 
+ void scale_and_add(__global float *p,float value,float scale)
+ {
+@@ -260,7 +275,12 @@ void winconv_3x3(int B, int N,int C,int H,int W,
+     int half_H = (H+1)/2;
+     int half_WG = half_W * half_H;
+ 
++#if COMPACT == 2
++    // 20 KiB serves both padded input/kernel tiles and the final transpose.
++    __local float wg_local_memory[TILES_IN_WG*KERNELS_IN_WG*20];
++#else
+     __local float wg_local_memory[(TILES_IN_WG + KERNELS_IN_WG + (16*PADDING_FACTOR)) * WG_K * 16];
++#endif
+ 
+ #define l_tile_stride (TILES_IN_WG * WG_K + STRIDE_OFFSET)
+ #define l_kern_stride (KERNELS_IN_WG * WG_K + STRIDE_OFFSET)
+@@ -271,10 +291,10 @@ void winconv_3x3(int B, int N,int C,int H,int W,
+ 
+     // Loading data
+     int l_tile_rc = get_local_id(WG_DIM) % TILES_IN_WG;
+-    int l_tile_k  = get_local_id(WG_DIM) / TILES_IN_WG;
++    int l_tile_k  = (get_local_id(WG_DIM) / TILES_IN_WG) % WG_K;
+ 
+     int l_kern_n  = get_local_id(WG_DIM) % KERNELS_IN_WG;
+-    int l_kern_k  = get_local_id(WG_DIM) / KERNELS_IN_WG;
++    int l_kern_k  = (get_local_id(WG_DIM) / KERNELS_IN_WG) % WG_K;
+    
+     int wg_brc    = get_group_id(0) * TILES_IN_WG;
+     int wg_feature= get_global_id(1) * KERNELS_IN_WG; 
+@@ -330,12 +350,16 @@ void winconv_3x3(int B, int N,int C,int H,int W,
+     {
+ 
+         // load relevant tile        
+-        float16 my_tile = (l_b < B && k + l_tile_k < C) ? load_4x4_tile_and_transform_v2(image,image_pos,image_limit,image_end,W,load_mask) : 0; 
+-        store_local(l_tile_ptr,l_tile_stride,my_tile);
++        if(get_local_id(WG_DIM)<TILES_IN_WG*WG_K) {
++            float16 my_tile = (l_b < B && k + l_tile_k < C) ? load_4x4_tile_and_transform_v2(image,image_pos,image_limit,image_end,W,load_mask) : 0;
++            store_local(l_tile_ptr,l_tile_stride,my_tile);
++        }
+         
+         // load relevant kernel
+-        float16 my_kern = (l_feature < N && k+l_kern_k < C) ? kernels[l_feature * C + k + l_kern_k] : 0;
+-        store_local(l_kern_ptr,l_kern_stride,my_kern);
++        if(get_local_id(WG_DIM)<KERNELS_IN_WG*WG_K) {
++            float16 my_kern = (l_feature < N && k+l_kern_k < C) ? kernels[l_feature * C + k + l_kern_k] : 0;
++            store_local(l_kern_ptr,l_kern_stride,my_kern);
++        }
+ 
+         barrier(CLK_LOCAL_MEM_FENCE);
+ 
+@@ -364,6 +388,40 @@ void winconv_3x3(int B, int N,int C,int H,int W,
+         barrier(CLK_LOCAL_MEM_FENCE);
+     }
+ 
++#if COMPACT
++    // Reuse the input-transform LDS after GEMM. One complete transformed
++    // output tile per thread avoids the original two-phase transpose.
++    #if COMPACT == 2
++    #define s_full(k,t,coord) wg_local_memory[((k)*TILES_IN_WG+(t))*20+(coord)]
++    #else
++    #define s_full(k,t,coord) wg_local_memory[((k)*TILES_IN_WG+(t))*16+(coord)]
++    #endif
++    #pragma unroll
++    for(int dr=0;dr<PATCH_K;++dr)
++        #pragma unroll
++        for(int dc=0;dc<PATCH_T;++dc)
++            s_full(dr+my_gemm_tile_kr,dc+my_gemm_tile_tl,my_gemm_tile_b)=p_C[dr][dc];
++    barrier(CLK_LOCAL_MEM_FENCE);
++    int tile_index=get_local_id(WG_DIM);
++    int output_feature=wg_feature+tile_index/TILES_IN_WG;
++    int output_brc=wg_brc+tile_index%TILES_IN_WG;
++    float16 transformed=vload16(0,&s_full(tile_index/TILES_IN_WG,tile_index%TILES_IN_WG,0));
++    float4 pixels=tile4x4_after_wingorad_to_2x2(transformed);
++    int ob=output_brc/half_WG,orc=output_brc%half_WG;
++    int oh=orc/half_W*2,ow=orc%half_W*2;
++    #if BIAS == 1
++    pixels+=(float4)(output_feature<N ? bias[output_feature] : 0.0f);
++    #endif
++    pixels.s0=ACTIVATION_F(pixels.s0);pixels.s1=ACTIVATION_F(pixels.s1);
++    pixels.s2=ACTIVATION_F(pixels.s2);pixels.s3=ACTIVATION_F(pixels.s3);
++    if(ob<B && output_feature<N) {
++        __global float *ptr=result+((ob*N+output_feature)*H+oh)*W+ow;
++        if(oh<H && ow<W)scale_and_add(ptr,pixels.s0,scale);
++        if(oh<H && ow+1<W)scale_and_add(ptr+1,pixels.s1,scale);
++        if(oh+1<H && ow<W)scale_and_add(ptr+W,pixels.s2,scale);
++        if(oh+1<H && ow+1<W)scale_and_add(ptr+W+1,pixels.s3,scale);
++    }
++#else
+     int tile0 = get_local_id(WG_DIM) * 4;
+     int s_col_t0 = tile0 % TILES_IN_WG;
+     int s_row_t = tile0 / TILES_IN_WG;
+@@ -438,5 +496,6 @@ void winconv_3x3(int B, int N,int C,int H,int W,
+         barrier(CLK_LOCAL_MEM_FENCE);
+     }
+ 
++#endif
+ }
+ 
+diff --git a/src/program_cache.cpp b/src/program_cache.cpp
+index 501d028..33d9456 100644
+--- a/src/program_cache.cpp
++++ b/src/program_cache.cpp
+@@ -9,6 +9,7 @@
+ #include <sstream>
+ #include <chrono>
+ #include <iostream>
++#include <cstdlib>
+ #ifdef WITH_SQLITE3
+ #include "binary_cache.hpp"
+ #endif
+@@ -71,6 +72,11 @@ cl::Program Cache::build_program(Context  &ctx,std::string const &source,std::ve
+     std::string ocl_version = ctx.platform().getInfo<CL_PLATFORM_VERSION>();
+     if(ocl_version.substr(7,1) >= "2") 
+ 	    ss << "-cl-std=CL2.0 ";
++    // Some older OpenCL implementations miscompile the built-in work-group
++    // reductions. Allow selecting DLPrimitives' portable local-memory path.
++    char const *custom_reduce = std::getenv("DLPRIM_CUSTOM_REDUCE");
++    if(custom_reduce && std::string(custom_reduce) == "1")
++        ss << "-DCUSTOM_REDUCE=1 ";
+     bool enable_half = ctx.check_device_extension("cl_khr_fp16");
+     for(size_t i=0;i<params.size();i++) {
+         if(i > 0)

@@ -30,6 +30,11 @@ add_library(pt_ocl SHARED
         src/pointwise_ops.cpp
         src/tensor_ops.cpp
         src/vision_ops.cpp
+        src/bbox_loss_ops.cpp
+        src/tal_ops.cpp
+        src/gpu_detection_ops.cpp
+        src/sppf_ops.cpp
+        src/focus_ops.cpp
         src/loss_ops.cpp
         src/random_ops.cpp
         src/norm_ops.cpp

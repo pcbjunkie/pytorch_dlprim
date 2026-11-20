@@ -7,6 +7,8 @@
 #include <tuple>
 #include <unordered_map>
 #include <iostream>
+#include <cstdlib>
+#include <cstring>
 
 namespace ptdlprim {
 bool batch_pointwise(at::TensorList a,at::TensorList b,at::TensorList outputs,
@@ -41,13 +43,15 @@ bool batch_pointwise(at::TensorList a,at::TensorList b,at::TensorList outputs,
     size_t wg=1,limit=std::min(size_t(128),ctx.device().getInfo<CL_DEVICE_MAX_WORK_GROUP_SIZE>());
     limit=std::min(limit,ctx.device().getInfo<CL_DEVICE_MAX_WORK_ITEM_SIZES>()[0]);
     while(wg*2<=limit)wg*=2;
+    const char *chunk_flag=std::getenv("DLPRIM_BATCH_POINTWISE_CHUNKS");
+    bool chunked=chunk_flag && std::strcmp(chunk_flag,"1")==0;
     static std::mutex mutex;
-    static std::map<std::tuple<cl_context,cl_device_id,int,size_t>,cl::Program> programs;
+    static std::map<std::tuple<cl_context,cl_device_id,int,size_t,bool>,cl::Program> programs;
     for(size_t begin=0;begin<a.size();begin+=batch) {
         size_t count=std::min(batch,a.size()-begin);cl::Program program;
         {
             std::lock_guard<std::mutex> lock(mutex);
-            auto key=std::make_tuple(ctx.context()(),ctx.device()(),int(expression),count);
+            auto key=std::make_tuple(ctx.context()(),ctx.device()(),int(expression),count,chunked);
             auto it=programs.find(key);
             if(it==programs.end()) {
                 std::ostringstream code;
@@ -60,7 +64,17 @@ bool batch_pointwise(at::TensorList a,at::TensorList b,at::TensorList outputs,
                     <<"__global const float *a=a0,*b=b0;__global float *y=y0;ulong ao=0,bo=0,yo=0,n=0;switch(g){";
                 for(size_t i=0;i<count;i++)code<<"case "<<i<<":a=a"<<i<<";b=b"<<i<<";y=y"<<i
                     <<";ao=ao"<<i<<";bo=bo"<<i<<";yo=yo"<<i<<";n=n"<<i<<";break;";
-                code<<"}for(ulong j=lane;j<n;j+=width){float x=a[ao+j],v=b[bo+j];";
+                code<<"}";
+                if(chunked) {
+                    code<<"ulong blocks=(n+width*4-1)/(width*4);"
+                        <<"ulong chunks=min(blocks,32ul);"
+                        <<"ulong chunk=get_group_id(1);if(chunk>=chunks)return;"
+                        <<"ulong span=(n+chunks*width-1)/(chunks*width)*width;"
+                        <<"ulong first=chunk*span,last=min(n,first+span);";
+                } else {
+                    code<<"ulong first=0,last=n;";
+                }
+                code<<"for(ulong j=first+lane;j<last;j+=width){float x=a[ao+j],v=b[bo+j];";
                 switch(expression) {
                 case BatchExpression::ema:
                     code<<"volatile float previous=x*w0;volatile float current=v*w1;y[yo+j]=previous+current;";break;
@@ -88,7 +102,12 @@ bool batch_pointwise(at::TensorList a,at::TensorList b,at::TensorList outputs,
         kernel.setArg(arg++,cl_float(w0));kernel.setArg(arg++,cl_float(w1));
         auto coefficient=scalar ? *scalar : a[begin];
         kernel.setArg(arg++,buffer_from_tensor(coefficient));kernel.setArg(arg++,cl_ulong(coefficient.storage_offset()));
-        q.queue().enqueueNDRangeKernel(kernel,cl::NullRange,cl::NDRange(count*wg),cl::NDRange(wg),q.events(),q.event("batched_pointwise"));
+        size_t chunks=1;
+        if(chunked)
+            for(size_t i=begin;i<begin+count;i++)
+                chunks=std::max(chunks,std::min(size_t(32),(size_t(outputs[i].numel())+wg*4-1)/(wg*4)));
+        q.queue().enqueueNDRangeKernel(kernel,cl::NullRange,cl::NDRange(count*wg,chunks),
+                                       cl::NDRange(wg,1),q.events(),q.event("batched_pointwise"));
     }
     if(bump_versions)for(auto &t:outputs)t.unsafeGetTensorImpl()->bump_version();
     sync_if_needed(device);return true;

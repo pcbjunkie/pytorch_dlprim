@@ -131,8 +131,12 @@ namespace ptdlprim {
         std::deque<Batch> batches;
         bool enabled=false;
         bool timing=false;
+        bool selective_retire=false;
+        bool batch_retirement_markers=false;
+        int64_t retirement_waits=0;
         int64_t byte_limit=32*1024*1024;
         unsigned op_limit=8;
+        unsigned marker_interval=8;
         unsigned ops=0;
         int64_t bytes=0,peak_bytes=0,retired_count=0;
         int64_t sync_calls=0,finish_calls=0,host_wait_ns=0,markers=0,flushes=0,throttles=0;
@@ -140,11 +144,20 @@ namespace ptdlprim {
         DeferredReleaseState(bool no_cache) {
             auto flag=std::getenv("OPENCL_DEFERRED_RELEASE");
             enabled=no_cache && flag && std::atoi(flag)!=0;
+            flag=std::getenv("OPENCL_SELECTIVE_RETIRE");selective_retire=flag && std::strcmp(flag,"1")==0;
+            flag=std::getenv("OPENCL_BATCH_RETIRE_MARKERS");
+            batch_retirement_markers=flag && std::strcmp(flag,"1")==0;
             flag=std::getenv("OPENCL_SYNC_TIMING");timing=flag && std::atoi(flag)!=0;
             flag=std::getenv("OPENCL_DEFERRED_RELEASE_MB");
             if(flag){int v=std::atoi(flag);TORCH_CHECK(v>=1 && v<=256,"Deferred release budget must be 1..256 MiB");byte_limit=int64_t(v)*1024*1024;}
             flag=std::getenv("OPENCL_ASYNC_OP_LIMIT");
-            if(flag){int v=std::atoi(flag);TORCH_CHECK(v>=1 && v<=128,"Async operation limit must be 1..128");op_limit=v;}
+            if(flag){int v=std::atoi(flag);TORCH_CHECK(v>=1 && v<=512,"Async operation limit must be 1..512");op_limit=v;}
+            flag=std::getenv("OPENCL_RETIRE_MARKER_OPS");
+            if(flag) {
+                int v=std::atoi(flag);
+                TORCH_CHECK(v>=1 && v<=64,"Retirement marker interval must be 1..64 operations");
+                marker_interval=v;
+            }
         }
         void seal(dlprim::ExecutionContext &q) {
             if(staged.empty())return;
@@ -176,6 +189,17 @@ namespace ptdlprim {
         }
         void throttle(dlprim::ExecutionContext &q,CLCache &cache) {
             seal(q);
+            if(selective_retire && ops<op_limit) {
+                collect(cache,false);
+                while(bytes>=byte_limit && !batches.empty()) {
+                    auto start=std::chrono::steady_clock::now();
+                    batches.front().complete.wait();
+                    ++retirement_waits;
+                    if(timing)host_wait_ns+=std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now()-start).count();
+                    collect(cache,false);
+                }
+                return;
+            }
             // Bound both retained memory and queued operations. This is a short
             // pipeline, not unbounded batching or a return to allocation caching.
             auto start=std::chrono::steady_clock::now();
@@ -198,7 +222,8 @@ namespace ptdlprim {
         auto &inst=instance();auto &d=inst.data(id);auto &s=inst.deferred(d);
         if(s.enabled) {
             std::unique_lock<std::mutex> guard(s.lock);
-            s.seal(d.queue);s.collect(d.cache,false);
+            if(!s.batch_retirement_markers)s.seal(d.queue);
+            s.collect(d.cache,false);
             if(s.bytes>=s.byte_limit)s.throttle(d.queue,d.cache);
         }
         return d.cache.allocate(id,d.ctx.context(),size);
@@ -230,7 +255,10 @@ namespace ptdlprim {
             if(s.timing)s.host_wait_ns+=std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now()-start).count();
             return;
         }
-        s.seal(d.queue);s.collect(d.cache,false);
+        // Keep released allocations owned until a later marker completes.
+        // Throttle and explicit drains still seal all outstanding releases.
+        if(!s.batch_retirement_markers || (s.ops+1)%s.marker_interval==0)s.seal(d.queue);
+        s.collect(d.cache,false);
         if(++s.ops>=s.op_limit || s.bytes>=s.byte_limit)s.throttle(d.queue,d.cache);
     }
 
@@ -259,6 +287,7 @@ namespace ptdlprim {
         stats["queue.marker_batches"]=s.markers;
         stats["queue.flushes"]=s.flushes;
         stats["queue.throttles"]=s.throttles;
+        stats["queue.retirement_waits"]=s.retirement_waits;
         if(reset)s.peak_bytes=s.bytes;
         return stats;
     }

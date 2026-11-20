@@ -112,6 +112,37 @@ using c10::DeviceType;
         return result;
     }
 
+    Tensor convolution_silu(const Tensor &input,const Tensor &weight,const c10::optional<Tensor> &bias,
+                            IntArrayRef stride,IntArrayRef padding,IntArrayRef dilation,int64_t groups)
+    {
+        GUARD;
+        TORCH_CHECK(!at::GradMode::is_enabled(),"Fused convolution/SiLU is inference-only");
+        TORCH_CHECK(input.device().type()==OpenCLDeviceType && input.scalar_type()==at::kFloat,
+                    "Fused convolution/SiLU requires FP32 OpenCL input");
+        TORCH_CHECK(weight.device()==input.device() && weight.scalar_type()==at::kFloat &&
+                    weight.is_contiguous(),"Invalid fused convolution weight");
+        TORCH_CHECK(input.dim()==4 && weight.dim()==4,"Expected NCHW/OIHW tensors");
+        auto contiguous=input.contiguous();
+        auto x=todp(contiguous),w=todp(weight);
+        bool with_bias=bias && bias->numel()!=0;
+        dlprim::Tensor b;
+        if(with_bias) {
+            TORCH_CHECK(bias->device()==input.device() && bias->scalar_type()==at::kFloat &&
+                        bias->is_contiguous(),"Invalid fused convolution bias");
+            b=todp(*bias);
+        }
+        const int64_t output_padding[2]={0,0};
+        auto cfg=conv_config(false,x,w,padding,stride,dilation,IntArrayRef(output_padding,2),groups);
+        auto q=getExecutionContext(input);dlprim::Context ctx(q);
+        auto conv=dlprim::core::Conv2DForward::create(ctx,cfg,with_bias,dlprim::StandardActivations::silu);
+        WSGuard ws(conv->workspace(),input.device());
+        auto result=new_tensor_as(dlprim::core::Conv2DForward::get_output_shape(cfg,x.shape()),input);
+        auto y=todp(result);
+        conv->enqueue(x,w,with_bias ? &b : nullptr,y,ws.ws,0,q);
+        sync_if_needed(input.device());
+        return result;
+    }
+
     // {"schema": "aten::convolution_backward_overrideable(Tensor grad_output, Tensor input, Tensor weight, int[] stride, int[] padding, int[] dilation, bool transposed, int[] output_padding, int groups, bool[3] output_mask) -> (Tensor grad_input, Tensor grad_weight, Tensor grad_bias)", "dispatch": "True", "default": "True"}
     ::std::tuple<Tensor,Tensor,Tensor> convolution_backward_overrideable(const Tensor & grad_output, const Tensor & input, const Tensor & weight, IntArrayRef stride, IntArrayRef padding, IntArrayRef dilation, bool transposed, IntArrayRef output_padding, int64_t groups, ::std::array<bool,3> output_mask)
     {
@@ -831,6 +862,13 @@ using c10::DeviceType;
 
 
 } // namespace
+
+TORCH_LIBRARY(pytorch_ocl, m) {
+    m.def("convolution_silu(Tensor input, Tensor weight, Tensor? bias, int[] stride, int[] padding, int[] dilation, int groups) -> Tensor");
+}
+TORCH_LIBRARY_IMPL(pytorch_ocl, PrivateUse1, m) {
+    m.impl("convolution_silu",&ptdlprim::convolution_silu);
+}
 
 TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
       m.impl("aten::convolution_overrideable",&ptdlprim::convolution_overrideable);

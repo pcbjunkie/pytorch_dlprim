@@ -1,0 +1,13 @@
+case,backend,workload,resolution,batch,confirmation,status,exit_code,images_per_second,elapsed_seconds,peak_temperature_C,peak_tracked_reserved_bytes,cpu_gradient_parameters,kernel_messages
+candidate-train-hd-b2-confirm,candidate,train,hd,2,True,passed,0,2.314438275152296,50.556872844696045,47.0,2316343708,201,False
+candidate-detect-hd-b8-confirm,candidate,detect,hd,8,True,passed,0,17.892628444789807,101.61814951896667,55.0,1097674480,,False
+candidate-detect-hd-b1-confirm,candidate,detect,hd,1,True,passed,0,11.630189820765903,96.60613131523132,54.0,201412336,,False
+candidate-train-1024-b4-confirm,candidate,train,1024,4,True,passed,0,3.3420268049286936,63.07226538658142,54.0,2295026856,201,False
+candidate-detect-1024-b8-confirm,candidate,detect,1024,8,True,passed,0,29.936708497051168,85.09456777572632,57.0,556416752,,False
+candidate-detect-1024-b1-confirm,candidate,detect,1024,1,True,passed,0,17.17216029048975,81.59185767173767,55.0,136916720,,False
+candidate-train-512-b16-confirm,candidate,train,512,16,True,passed,0,14.149443597442295,59.063905239105225,56.0,2335701896,201,False
+candidate-detect-512-b32-confirm,candidate,detect,512,32,True,passed,0,116.12681450515971,52.55816316604614,61.0,556228336,,False
+candidate-detect-512-b1-confirm,candidate,detect,512,1,True,passed,0,27.115740697531255,50.052594900131226,59.0,81518320,,False
+candidate-train-256-b64-confirm,candidate,train,256,64,True,passed,0,49.24601550040731,61.56549549102783,61.0,2331503496,201,False
+candidate-detect-256-b128-confirm,candidate,detect,256,128,True,passed,0,365.3887701087305,47.549498558044434,65.0,556179184,,False
+candidate-detect-256-b1-confirm,candidate,detect,256,1,True,passed,0,29.202799345295475,44.04371380805969,63.0,31213296,,False

@@ -1,5 +1,7 @@
 # Verified Radeon OpenCL baseline v1
 
+The [verified source revision](https://github.com/pcbjunkie/pytorch_dlprim/tree/089e12ba4ecb5d4c903a2e08ef2d3afb259e80b4) pairs with the Clover build and launcher instructions below.
+
 Updated 2026-11-03. All five GPU models passed focused correctness/model checks
 and 20 additional wildlife-training epochs with the consolidated source.
 These are explicit opt-in profiles, not a claim that arbitrary OpenCL models,

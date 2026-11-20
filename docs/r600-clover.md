@@ -1,5 +1,7 @@
 # Experimental legacy Radeon Clover profile
 
+Use the [verified Clover source revision](https://github.com/pcbjunkie/pytorch_dlprim/tree/089e12ba4ecb5d4c903a2e08ef2d3afb259e80b4) to build and run the profiles below. The GCN release uses a separate DLPrimitives patch.
+
 A simplified candidate is now consolidated separately: [minimal-v1](RADEON_MINIMAL_BASELINE.md). It is not yet cross-card/sustained validated; the conservative profile remains available.
 
 This is a development snapshot for Mesa's r600 OpenCL path, with correctness

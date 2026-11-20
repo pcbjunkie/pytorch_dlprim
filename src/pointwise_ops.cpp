@@ -688,6 +688,20 @@ using c10::DeviceType;
         return out;
     }
 
+    Tensor& all_all_out(const Tensor& self, Tensor& out)
+    {
+        if(self.numel()==0) {out.fill_(true);return out;}
+        if(self.dim()==0) {out.copy_(self.ne(0));return out;}
+        return all_any_out(self, c10::nullopt, false, out, true);
+    }
+
+    Tensor& any_all_out(const Tensor& self, Tensor& out)
+    {
+        if(self.numel()==0) {out.fill_(false);return out;}
+        if(self.dim()==0) {out.copy_(self.ne(0));return out;}
+        return all_any_out(self, c10::nullopt, false, out, false);
+    }
+
     Tensor& all_out(const Tensor& self, int64_t dim, bool keepdim, Tensor& out)
     {
         GUARD;
@@ -851,6 +865,37 @@ using c10::DeviceType;
     {
         GUARD;
         TORCH_CHECK(!tensors.empty(), "expected a non-empty list of Tensors");
+        char const *direct=std::getenv("DLPRIM_DIRECT_CAT");
+        if(direct && std::strcmp(direct,"1")==0) {
+            std::vector<Tensor> inputs;
+            bool same_type=true;
+            for(auto const &t:tensors) {
+                if(t.dim()==1 && t.size(0)==0)continue;
+                if(!inputs.empty() && t.scalar_type()!=inputs.front().scalar_type())same_type=false;
+                inputs.push_back(t);
+            }
+            if(!inputs.empty() && same_type) {
+                auto sizes=inputs.front().sizes().vec();
+                TORCH_CHECK(dim>=0 && dim<int64_t(sizes.size()),"dim does not match shape");
+                sizes[dim]=0;
+                for(auto const &t:inputs) {
+                    TORCH_CHECK(t.dim()==int64_t(sizes.size()),"Shapes do not match");
+                    TORCH_CHECK(t.device()==inputs.front().device(),"Devices do not match");
+                    for(int64_t i=0;i<t.dim();++i)
+                        if(i!=dim)TORCH_CHECK(t.size(i)==sizes[i],"Shapes do not match");
+                    sizes[dim]+=t.size(dim);
+                }
+                if(reuse) {TORCH_CHECK(out.sizes().vec()==sizes,"Output shape is not correct for concatenation");}
+                else {out=at::empty(sizes,inputs.front().options());}
+                int64_t pos=0;
+                for(auto const &t:inputs) {
+                    out.narrow(dim,pos,t.size(dim)).copy_(t);
+                    pos+=t.size(dim);
+                }
+                sync_if_needed(out.device());
+                return out;
+            }
+        }
         std::vector<dlprim::Tensor> list;
         std::vector<Tensor> list_c;
         for(auto const &t:tensors) {
@@ -1836,6 +1881,8 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
       m.impl("aten::gt.Scalar_out",&ptdlprim::gt_out);
 
       m.impl("aten::all.out",&ptdlprim::all_out);
+      m.impl("aten::all.all_out",&ptdlprim::all_all_out);
+      m.impl("aten::any.all_out",&ptdlprim::any_all_out);
       m.impl("aten::any.out",&ptdlprim::any_out);
       m.impl("aten::isposinf.out",&ptdlprim::isposinf_out);
       m.impl("aten::isneginf.out",&ptdlprim::isneginf_out);

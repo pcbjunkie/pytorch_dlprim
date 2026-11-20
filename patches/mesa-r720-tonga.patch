@@ -1,0 +1,32 @@
+diff --git a/src/gallium/drivers/radeonsi/si_compute_blit.c b/src/gallium/drivers/radeonsi/si_compute_blit.c
+index 8ba1faf0c38..ae5671b70b4 100644
+--- a/src/gallium/drivers/radeonsi/si_compute_blit.c
++++ b/src/gallium/drivers/radeonsi/si_compute_blit.c
+@@ -158,6 +158,12 @@ bool si_compute_clear_copy_buffer(struct si_context *sctx, struct pipe_resource
+                                   unsigned dwords_per_thread, bool render_condition_enable,
+                                   bool fail_if_slow)
+ {
++   /* R720/Tonga qualification: large compute clears/copies corrupt at 32 MiB
++    * boundaries. Keep the existing CP DMA fallback for these transfers while
++    * the standalone OpenCL reproducer is investigated. */
++   if (sctx->screen->info.family == CHIP_TONGA && size >= 16 * 1024 * 1024)
++      return false;
++
+    assert(dst->target != PIPE_BUFFER || dst_offset + size <= dst->width0);
+    assert(!src || src_offset + size <= src->width0);
+    bool is_copy = src != NULL;
+diff --git a/src/gallium/drivers/radeonsi/si_get.c b/src/gallium/drivers/radeonsi/si_get.c
+index 08ca0e022a1..1317cf4e399 100644
+--- a/src/gallium/drivers/radeonsi/si_get.c
++++ b/src/gallium/drivers/radeonsi/si_get.c
+@@ -850,7 +850,9 @@ static int si_get_compute_param(struct pipe_screen *screen, enum pipe_shader_ir
+       if (ret) {
+          uint64_t *grid_size = ret;
+          /* Use this size, so that internal counters don't overflow 64 bits. */
+-         grid_size[0] = UINT32_MAX;
++         /* Tonga on this qualified path truncates dispatch counts above 65535.
++          * Let Rusticl split large grids and supply the workgroup-ID offset. */
++         grid_size[0] = sscreen->info.family == CHIP_TONGA ? UINT16_MAX : UINT32_MAX;
+          grid_size[1] = UINT16_MAX;
+          grid_size[2] = UINT16_MAX;
+       }

@@ -2,7 +2,7 @@
 
 For this fork's experimental legacy Radeon Clover path, first read
 [the r600 guide](docs/r600-clover.md): it needs the recorded DLPrimitives/Mesa
-patches and an explicit profile. The generic upstream build instructions follow.
+patches and an explicit profile. For the GCN benchmark build, apply the patch and select the runtime in the [Radeon YOLO setup guide](docs/radeon-yolo.md) before configuring CMake. The generic build instructions follow.
 
 - Setup pip virtual enviromnet with _CPU_ version of pytorch. Supported pytorch version are 2.4 and above. Also pytorch 1.13 is supprted.
 - Build dlprim\_backend and install at location you want
@@ -20,7 +20,7 @@ patches and an explicit profile. The generic upstream build instructions follow.
 
 4. Clone The repository
 
-        git clone --recurse-submodules https://github.com/artyom-beilis/pytorch_dlprim.git
+        git clone --recurse-submodules https://github.com/pcbjunkie/pytorch_dlprim.git
 
 5.  Build the backend.
 
