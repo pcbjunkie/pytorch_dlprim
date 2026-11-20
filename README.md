@@ -14,43 +14,66 @@ The goal is practical: let people experiment with machine learning using hardwar
 
 ### What works today
 
-We’ve trained and run a YOLOv8 nano wildlife detector on Radeon cards ranging from the **HD5870 to the HD7970 and R9 270**. Work included fixing incorrect GPU results, buffer lifetime problems, allocation failures and driver/compiler issues, then improving convolution, reductions, indexing, optimizer updates and synchronization.
+FP32 YOLO training and detection work on the Radeon cards below. GCN uses RustiCL with radeonsi. Detection is timed from decoded frames through final detections. GCN training rates are from short fixture runs. HD inputs use 1920×1080 images padded to 1920×1088. Batches are per worker.
 
-At **256×256 FP32**, our completed runs achieved:
+#### FirePro S7150
 
-| GPU | VRAM | OpenCL path | Training batch | Training images/s | Detection FPS |
-|---|---:|---|---:|---:|---:|
-| HD5870 | 1 GB | Clover | 24 | 13.02 | 17.40 |
-| HD6850 | 1 GB | Clover | 24 | 8.83 | 14.73 |
-| HD6970 | 2 GB | Clover | 28 | 14.30 | 15.28 |
-| R9 270 | 2 GB | Rusticl | 48 | 21.68 | 32.40 |
-| HD7970 | 3 GB | Rusticl | 80 | 29.69 | 27.87 |
+S7150 ×2 rates are combined across two 8 GB cards. B4 × 3 means three batch-4 workers per GPU.
 
-These measurements use a **Phenom II X4 with 16 GB RAM**. Detection uses batch one and includes preprocessing and CPU NMS. Every listed configuration completed a sustained training run: 20 epochs for the HD5870, HD6850, HD6970 and R9 270, and 10 epochs for the HD7970 Rusticl result. Training throughput excludes validation and checkpoint writing. These are results for the tested configurations, not matched measurements of hardware efficiency.
+![FirePro S7150 training and detection throughput](docs/benchmarks/charts/s7150-throughput.png)
 
-The [consolidated Clover baseline](docs/RADEON_MINIMAL_BASELINE.md) records the earlier five-card verification; the GCN Rusticl figures above are subsequent measurements using the private Mesa 25 radeonsi/ACO runtime and the same frozen backend. They require that runtime and the GCN allocator settings (no allocation cache, tight allocation, deferred release, queue limit 128 and retirement budget 64 MiB); the older Rusticl runtime is not equivalent. See the [GCN launcher](tools/with-radeon-gcn-baseline.sh) for the backend settings.
+| Model | Input | Training images/s (batch) | Detection FPS (batch) | Configuration |
+| --- | --- | ---: | ---: | --- |
+| YOLOv8n | 256×256 | 92.35 (B128) | — | S7150 ×1 |
+| YOLOv8n | 512×512 | 27.38 (B40) | — | S7150 ×1 |
+| YOLOv8n | 512×512 | 48.10 (B16) | 252.28 (B16) | S7150 ×2 |
+| YOLOv8n | 1024×1024 | 12.60 (B8) | 67.92 (B12) | S7150 ×2 |
+| YOLOv8n | 1920×1080 | 10.02 (B6) | 40.56 (B8) | S7150 ×2 |
+| YOLO26n | 512×512 | 37.16 (B16) | 267.99 (B16) | S7150 ×2 |
+| YOLO26n | 1024×1024 | 9.75 (B8) | 61.42 (B12) | S7150 ×2 |
+| YOLO26n | 1920×1080 | 7.98 (B6) | 38.49 (B8) | S7150 ×2 |
+| YOLOX-nano | 512×512 | 33.24 (B16) | 340.81 (B12) | S7150 ×2 |
+| YOLOX-nano | 1024×1024 | 14.75 (B8) | 102.05 (B8) | S7150 ×2 |
+| YOLOX-nano | 1920×1080 | 10.11 (B7) | 72.71 (B4 × 3) | S7150 ×2 |
 
-**Memory remains a constraint.** These cards have only 1–3 GB of VRAM, and the legacy OpenCL path has allocation limitations that can prevent training from using all available memory. The legacy Clover configurations use tested memory reservations to improve reliability. Listed batch sizes are verified working settings, rather than universal maximums; larger images and models require smaller batches.
+[Full matrix](docs/benchmarks/dual-s7150-matrix.csv) · [HD detection sweeps](docs/benchmarks/s7150-hd-detection-sweeps.md) · [HD training sweeps](docs/benchmarks/s7150-hd-training-sweeps.md) · [YOLOv8n 256 training sweep](docs/benchmarks/s7150-v8-256-training-sweep.md) · [YOLOv8n 512 training sweep](docs/benchmarks/s7150-v8-512-training-sweep.md)
 
-### S7150 detection milestone
+#### Radeon HD 7970
 
-The earlier single-card HD 7970 RustiCL run reached **27.87 FPS at 256×256**. On the Dell R720, the optimized YOLOv8n detector reached **252.28 FPS at 512×512** across **two FirePro S7150s**, with one batch-16 worker per GPU. That averages about **126 FPS per card** at four times the pixels per image.
+One 3 GB card. Batch 1 detection rates shown for YOLOv8n are from the final confirmation runs.
 
-Both FP32 runs measured detection from decoded frames in RAM and included preprocessing and CPU NMS. The GPU, host, batch size, and software stack changed between runs, so this is a comparison of the tested configurations.
+![Radeon HD 7970 training and detection throughput](docs/benchmarks/charts/hd7970-throughput.png)
 
-### Radeon OpenCL benchmark matrices
+| Model | Input | Training images/s (batch) | Detection FPS (batch) | Detection FPS (B1) |
+| --- | --- | ---: | ---: | ---: |
+| YOLOv8n | 256×256 | 49.25 (B64) | 365.39 (B128) | 29.20 |
+| YOLOv8n | 512×512 | 14.15 (B16) | 116.13 (B32) | 27.12 |
+| YOLOv8n | 1024×1024 | 3.34 (B4) | 29.94 (B8) | 17.17 |
+| YOLOv8n | 1920×1080 | 2.31 (B2) | 17.89 (B8) | 11.63 |
+| YOLO26n | 256×256 | 33.99 (B48) | 508.15 (B128) | — |
+| YOLO26n | 512×512 | 8.79 (B16) | 125.67 (B32) | — |
+| YOLO26n | 1024×1024 | 2.06 (B4) | 30.42 (B8) | — |
+| YOLO26n | 1920×1080 | 0.88 (B1) | 17.51 (B8) | — |
+| YOLOX-nano | 256×256 | 9.94 (B32) | 466.90 (B128) | — |
+| YOLOX-nano | 512×512 | 5.98 (B16) | 146.62 (B32) | — |
+| YOLOX-nano | 1024×1024 | 2.43 (B4) | 43.39 (B8) | — |
+| YOLOX-nano | 1920×1080 | 1.61 (B2) | 26.59 (B8) | — |
 
-FP32 throughout. Detection starts from decoded frames and includes packing, upload, forward, and postprocessing. These training figures measure short fixture updates. HD uses 1920×1080 image content padded to 1920×1088. Batch sizes are per worker.
+[YOLOv8n confirmations](docs/benchmarks/hd7970-final-confirmations.csv) · [YOLOv8n batch sweep](docs/benchmarks/hd7970-batch-sweep.csv) · [YOLOv8n full-preset training sweep](docs/benchmarks/hd7970-full-training-sweep.csv) · [YOLO26n and YOLOX-nano sweeps](docs/benchmarks/hd7970-yolo26-yolox-batch-sweeps.csv)
 
-**R9 270, one GPU.** Full-preset training and the updated detection build.
+#### Radeon R9 270
+
+One 2 GB card. The table uses the fastest confirmed training and detection rates per case. YOLOv8n training at 256×256 uses the portable preset.
+
+![Radeon R9 270 training and detection throughput](docs/benchmarks/charts/r9-270-throughput.png)
 
 | Model | Input | Training images/s (batch) | Detection FPS (batch) |
 | --- | --- | ---: | ---: |
-| YOLOv8n | 256×256 | 24.97 (B48) | 211.39 (B16) |
+| YOLOv8n | 256×256 | 35.45 (B48) | 211.39 (B16) |
 | YOLOv8n | 512×512 | 12.64 (B8) | 72.97 (B8) |
 | YOLOv8n | 1024×1024 | 2.99 (B2) | 21.12 (B4) |
 | YOLOv8n | 1920×1080 | 2.12 (B1) | 12.32 (B4) |
-| YOLO26n | 256×256 | 20.42 (B48) | 240.15 (B16) |
+| YOLO26n | 256×256 | 31.00 (B48) | 240.15 (B16) |
 | YOLO26n | 512×512 | 8.20 (B8) | 74.98 (B8) |
 | YOLO26n | 1024×1024 | 1.90 (B2) | 19.94 (B4) |
 | YOLO26n | 1920×1080 | 1.17 (B1) | 12.14 (B4) |
@@ -59,54 +82,35 @@ FP32 throughout. Detection starts from decoded frames and includes packing, uplo
 | YOLOX-nano | 1024×1024 | 2.74 (B2) | 31.78 (B4) |
 | YOLOX-nano | 1920×1080 | 1.56 (B1) | 18.78 (B4) |
 
-**FirePro S7150, two GPUs.** Rates are aggregate. The last column gives detection batch × workers per GPU. The square-resolution matrix uses selected comparison batches.
+[Batch sweeps](docs/benchmarks/r9-270-batch-sweep.csv) · [Full-preset confirmations](docs/benchmarks/r9-270-full-preset.csv)
 
-| Model | Input | Training images/s | Train batch/GPU | Detection FPS | Detect batch × workers/GPU |
-| --- | --- | ---: | ---: | ---: | ---: |
-| YOLOv8n | 512×512 | 48.10 | 16 | 252.28 | 16 × 1 |
-| YOLOv8n | 1024×1024 | 12.60 | 8 | 67.92 | 12 × 1 |
-| YOLOv8n | 1920×1080 | 10.02 | 6 | 40.56 | 8 × 1 |
-| YOLO26n | 512×512 | 37.16 | 16 | 267.99 | 16 × 1 |
-| YOLO26n | 1024×1024 | 9.75 | 8 | 61.42 | 12 × 1 |
-| YOLO26n | 1920×1080 | 7.98 | 6 | 38.49 | 8 × 1 |
-| YOLOX-nano | 512×512 | 33.24 | 16 | 340.81 | 12 × 1 |
-| YOLOX-nano | 1024×1024 | 14.75 | 8 | 102.05 | 8 × 1 |
-| YOLOX-nano | 1920×1080 | 10.11 | 7 | 72.71 | 4 × 3 |
+#### Radeon r600 / Clover
 
-**HD 7970, one GPU.** YOLOv8n full-preset training and candidate detection on the Phenom host.
-The final confirmation repeated the selected batches from the earlier sweeps.
+The **r600 Clover path still needs further optimization**. The configurations below completed 20 added training epochs with YOLOv8n at 256×256 FP32. Use the [verified Clover build and card presets](docs/RADEON_MINIMAL_BASELINE.md).
 
-| Input | Training images/s (batch) | Detection FPS (batch) | Detection FPS (B1) |
-| --- | ---: | ---: | ---: |
-| 256×256 | 49.25 (B64) | 365.39 (B128) | 29.20 |
-| 512×512 | 14.15 (B16) | 116.13 (B32) | 27.12 |
-| 1024×1024 | 3.34 (B4) | 29.94 (B8) | 17.17 |
-| 1920×1080 | 2.31 (B2) | 17.89 (B8) | 11.63 |
+##### Radeon HD 5870
 
-[Final confirmation runs](docs/benchmarks/hd7970-final-confirmations.csv).
+![Radeon HD 5870 training and detection throughput](docs/benchmarks/charts/hd5870-throughput.png)
 
+| Model | Input | VRAM | Training images/s (batch) | Detection FPS (batch) |
+| --- | --- | ---: | ---: | ---: |
+| YOLOv8n | 256×256 | 1 GB | 13.02 (B24) | 17.40 (B1) |
 
-**HD 7970, YOLO26n and YOLOX-nano.** Same candidate backend and host.
-The runs use the model-specific S7150 opt-ins and show the fastest passing confirmations.
+##### Radeon HD 6850
 
-| Model | Input | Training images/s (batch) | Detection FPS (batch) |
-| --- | --- | ---: | ---: |
-| YOLO26n | 256×256 | 33.99 (B48) | 508.15 (B128) |
-| YOLO26n | 512×512 | 8.79 (B16) | 125.67 (B32) |
-| YOLO26n | 1024×1024 | 2.06 (B4) | 30.42 (B8) |
-| YOLO26n | 1920×1080 | 0.88 (B1) | 17.51 (B8) |
-| YOLOX-nano | 256×256 | 9.94 (B32) | 466.90 (B128) |
-| YOLOX-nano | 512×512 | 5.98 (B16) | 146.62 (B32) |
-| YOLOX-nano | 1024×1024 | 2.43 (B4) | 43.39 (B8) |
-| YOLOX-nano | 1920×1080 | 1.61 (B2) | 26.59 (B8) |
+![Radeon HD 6850 training and detection throughput](docs/benchmarks/charts/hd6850-throughput.png)
 
-[YOLO26n and YOLOX-nano batch attempts](docs/benchmarks/hd7970-yolo26-yolox-batch-sweeps.csv).
+| Model | Input | VRAM | Training images/s (batch) | Detection FPS (batch) |
+| --- | --- | ---: | ---: | ---: |
+| YOLOv8n | 256×256 | 1 GB | 8.83 (B24) | 14.73 (B1) |
 
-#### Batch sweep results
+##### Radeon HD 6970
 
-- R9 270 [screening and confirmation attempts](docs/benchmarks/r9-270-batch-sweep.csv) and [full-preset confirmations](docs/benchmarks/r9-270-full-preset.csv).
-- S7150 [full matrix](docs/benchmarks/dual-s7150-matrix.csv), [HD detection sweeps](docs/benchmarks/s7150-hd-detection-sweeps.md), [HD training sweeps](docs/benchmarks/s7150-hd-training-sweeps.md), and YOLOv8n training sweeps at [256](docs/benchmarks/s7150-v8-256-training-sweep.md) and [512](docs/benchmarks/s7150-v8-512-training-sweep.md).
-- HD 7970 [portable training and old/candidate detection sweep](docs/benchmarks/hd7970-batch-sweep.csv) and [all nine full-preset training attempts](docs/benchmarks/hd7970-full-training-sweep.csv).
+![Radeon HD 6970 training and detection throughput](docs/benchmarks/charts/hd6970-throughput.png)
+
+| Model | Input | VRAM | Training images/s (batch) | Detection FPS (batch) |
+| --- | --- | ---: | ---: | ---: |
+| YOLOv8n | 256×256 | 2 GB | 14.30 (B28) | 15.28 (B1) |
 
 ### Model configuration guides
 
@@ -124,14 +128,6 @@ The runs use the model-specific S7150 opt-ins and show the fastest passing confi
 - **Open source developers** interested in improving support for overlooked hardware.
 
 Support is currently demonstrated for specific detection workloads and configurations. This is an experimental backend, and broader model compatibility remains work in progress.
-
-### How it started
-
-The original motivation was a small computer vision project and became an opportunity to experiment with older hardware.
-
-Along the way, it became a demonstration that decade-old GPUs still have useful work left in them.
-
-**Old hardware, modern tools, and a reason to keep learning.**
 
 ## Upstream project documentation
 

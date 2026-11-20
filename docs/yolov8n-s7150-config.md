@@ -19,7 +19,7 @@ Start with the [GCN build and fixture setup](radeon-yolo.md).
 | S7150 ×2 | 1920×1080 | 10.02 (B6) | 40.56 (B8) |
 
 S7150 ×2 rates aggregate two physical GPUs. Batches are per worker. B4 × 3 means three batch-4 workers per GPU.
-These are fixture throughput measurements. See the [README sweep links](../README.md#batch-sweep-results) for other tested batches.
+These are fixture throughput measurements. See the [README sweep links](../README.md#what-works-today) for other tested batches.
 
 ## Opt-ins
 
