@@ -12,11 +12,22 @@ This project makes older AMD Radeon cards usable for modern PyTorch workloads th
 
 The goal is practical: let people experiment with machine learning using hardware they already own. A retired gaming card can become a training device, a wildlife detector, or a way to learn how neural networks work.
 
+### Who it’s for
+
+- **Students and curious builders** learning PyTorch without buying a new GPU.
+- **People reusing old PCs**, particularly where modern hardware is expensive or difficult to obtain.
+- **Hobbyists building vision projects** such as wildlife cameras, feeder monitors and small automation systems.
+- **Open source developers** interested in improving support for overlooked hardware.
+
+Support is currently demonstrated for specific detection workloads and configurations. This is an experimental backend, and broader model compatibility remains work in progress.
+
 ### What works today
 
 FP32 YOLO training and detection work on the Radeon cards below. GCN uses RustiCL with radeonsi. Detection is timed from decoded frames through final detections. GCN training rates are from short fixture runs. HD inputs use 1920×1080 images padded to 1920×1088. Batches are per worker.
 
-#### FirePro S7150
+## Hardware Optimizations
+
+### FirePro S7150
 
 S7150 ×2 rates are combined across two 8 GB cards. B4 × 3 means three batch-4 workers per GPU.
 
@@ -38,7 +49,7 @@ S7150 ×2 rates are combined across two 8 GB cards. B4 × 3 means three batch-4 
 
 [Full matrix](docs/benchmarks/dual-s7150-matrix.csv) · [HD detection sweeps](docs/benchmarks/s7150-hd-detection-sweeps.md) · [HD training sweeps](docs/benchmarks/s7150-hd-training-sweeps.md) · [YOLOv8n 256 training sweep](docs/benchmarks/s7150-v8-256-training-sweep.md) · [YOLOv8n 512 training sweep](docs/benchmarks/s7150-v8-512-training-sweep.md)
 
-#### Radeon HD 7970
+### Radeon HD 7970
 
 One 3 GB card. Batch 1 detection rates shown for YOLOv8n are from the final confirmation runs.
 
@@ -61,7 +72,7 @@ One 3 GB card. Batch 1 detection rates shown for YOLOv8n are from the final conf
 
 [YOLOv8n confirmations](docs/benchmarks/hd7970-final-confirmations.csv) · [YOLOv8n batch sweep](docs/benchmarks/hd7970-batch-sweep.csv) · [YOLOv8n full-preset training sweep](docs/benchmarks/hd7970-full-training-sweep.csv) · [YOLO26n and YOLOX-nano sweeps](docs/benchmarks/hd7970-yolo26-yolox-batch-sweeps.csv)
 
-#### Radeon R9 270
+### Radeon R9 270
 
 One 2 GB card. The table uses the fastest confirmed training and detection rates per case. YOLOv8n training at 256×256 uses the portable preset.
 
@@ -84,11 +95,11 @@ One 2 GB card. The table uses the fastest confirmed training and detection rates
 
 [Batch sweeps](docs/benchmarks/r9-270-batch-sweep.csv) · [Full-preset confirmations](docs/benchmarks/r9-270-full-preset.csv)
 
-#### Radeon r600 / Clover
+### Radeon r600 / Clover
 
 The **r600 Clover path still needs further optimization**. The configurations below completed 20 added training epochs with YOLOv8n at 256×256 FP32. Use the [verified Clover build and card presets](docs/RADEON_MINIMAL_BASELINE.md).
 
-##### Radeon HD 5870
+### Radeon HD 5870
 
 ![Radeon HD 5870 training and detection throughput](docs/benchmarks/charts/hd5870-throughput.png)
 
@@ -96,7 +107,7 @@ The **r600 Clover path still needs further optimization**. The configurations be
 | --- | --- | ---: | ---: | ---: |
 | YOLOv8n | 256×256 | 1 GB | 13.02 (B24) | 17.40 (B1) |
 
-##### Radeon HD 6850
+### Radeon HD 6850
 
 ![Radeon HD 6850 training and detection throughput](docs/benchmarks/charts/hd6850-throughput.png)
 
@@ -104,7 +115,7 @@ The **r600 Clover path still needs further optimization**. The configurations be
 | --- | --- | ---: | ---: | ---: |
 | YOLOv8n | 256×256 | 1 GB | 8.83 (B24) | 14.73 (B1) |
 
-##### Radeon HD 6970
+### Radeon HD 6970
 
 ![Radeon HD 6970 training and detection throughput](docs/benchmarks/charts/hd6970-throughput.png)
 
@@ -120,14 +131,6 @@ The **r600 Clover path still needs further optimization**. The configurations be
 - [YOLO26n on R9 270, HD 7970 and FirePro S7150](docs/yolo26n-s7150-config.md)
 - [YOLOX-nano on R9 270, HD 7970 and FirePro S7150](docs/yolox-nano-s7150-config.md)
 
-### Who it’s for
-
-- **Students and curious builders** learning PyTorch without buying a new GPU.
-- **People reusing old PCs**, particularly where modern hardware is expensive or difficult to obtain.
-- **Hobbyists building vision projects** such as wildlife cameras, feeder monitors and small automation systems.
-- **Open source developers** interested in improving support for overlooked hardware.
-
-Support is currently demonstrated for specific detection workloads and configurations. This is an experimental backend, and broader model compatibility remains work in progress.
 
 ## Upstream project documentation
 
